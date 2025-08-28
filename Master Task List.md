@@ -97,11 +97,11 @@ tasks:
   description: CORS 設定（許可オリジンCSV→配列）
   acceptance_criteria:
     - "空文字ならCORS無効、値があれば許可オリジンが設定されるユニットテスト"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-08-31"
+  end: "2025-08-31"
+  notes: "CORS middleware implemented"
 
 # ========= 2. DB 接続・モデル =========
 - id: T020

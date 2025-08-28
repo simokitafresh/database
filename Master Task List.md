@@ -67,11 +67,11 @@ tasks:
   acceptance_criteria:
     - "Settingsに以下のキー: APP_ENV, DATABASE_URL, API_MAX_SYMBOLS, API_MAX_ROWS, YF_REFETCH_DAYS, YF_REQ_CONCURRENCY, FETCH_TIMEOUT_SECONDS, REQUEST_TIMEOUT_SECONDS, CORS_ALLOW_ORIGINS, LOG_LEVEL"
     - "pytestで env を一時変更して反映を検証"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-08-29"
+  end: "2025-08-29"
+  notes: "Settings implemented"
 
 - id: T012
   title: core.logging の実装（構造化ログ）

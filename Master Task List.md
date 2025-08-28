@@ -82,11 +82,11 @@ tasks:
   description: ログ基盤を用意（最低限）
   acceptance_criteria:
     - "pytest caplog で JSON 文字列が出力され、level/name/message を含む"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-08-30"
+  end: "2025-08-30"
+  notes: "JSON logging configured"
 
 - id: T013
   title: core.cors の実装

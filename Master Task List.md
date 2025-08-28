@@ -49,11 +49,11 @@ tasks:
   description: アプリの土台を作る
   acceptance_criteria:
     - "TestClient で GET /healthz が 200 を返す(固定JSONで可)"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-08-28"
+  end: "2025-08-28"
+  notes: "/healthz endpoint scaffolding"
 
 - id: T011
   title: core.config の実装（Pydantic Settings）

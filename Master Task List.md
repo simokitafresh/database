@@ -27,11 +27,11 @@ tasks:
   acceptance_criteria:
     - "requirements.txt が requirements.in を網羅"
     - "README に 'テストはネットワークモック' と明記"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2024-04-10"
+  end: "2024-04-10"
+  notes: "初期ファイルを追加"
 
 # ========= 1. アプリ雛形 =========
 - id: T010

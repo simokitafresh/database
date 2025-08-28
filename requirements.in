@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pydantic-settings
+pandas
+numpy
+yfinance
+typer
+httpx
+pytest
+pytest-asyncio
+pytest-mock

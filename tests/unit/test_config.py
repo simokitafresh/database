@@ -1,4 +1,4 @@
-from app.core.config import Settings
+from app.core.config import Settings, settings
 
 
 def test_settings_env_override(monkeypatch):
@@ -22,3 +22,10 @@ def test_settings_contains_all_keys():
         "LOG_LEVEL",
     }
     assert expected_keys <= settings.model_dump().keys()
+
+
+def test_module_level_settings_singleton():
+    """Ensure the module-level `settings` object is initialised and usable."""
+    assert isinstance(settings, Settings)
+    # accessing an attribute verifies the object is populated
+    assert settings.APP_ENV == "development"

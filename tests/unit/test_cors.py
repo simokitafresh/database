@@ -15,3 +15,14 @@ def test_cors_middleware_enabled_with_origins():
     cls, options = middleware
     assert cls is CORSMiddleware
     assert options["allow_origins"] == ["https://a.com", "https://b.com"]
+    assert options["allow_credentials"] is True
+
+
+def test_cors_middleware_wildcard_disables_credentials_and_uses_regex():
+    settings = Settings(CORS_ALLOW_ORIGINS="*")
+    middleware = create_cors_middleware(settings)
+    assert middleware is not None
+    cls, options = middleware
+    assert cls is CORSMiddleware
+    assert options["allow_origin_regex"] == ".*"
+    assert options["allow_credentials"] is False

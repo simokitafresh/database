@@ -14,7 +14,7 @@ ToDo（コミット粒度）
 
 3. docs(readme): note about Postgres migration source（任意） ✅
 
-
+進捗メモ: 2025-05-05 CI 構成を確認し、テスト実行済み。
 
 パッチ
 

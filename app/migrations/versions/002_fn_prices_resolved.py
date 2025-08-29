@@ -72,4 +72,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS get_prices_resolved(text, date, date);")
-

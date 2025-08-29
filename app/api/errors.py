@@ -22,9 +22,7 @@ def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     return JSONResponse(payload, status_code=exc.status_code)
 
 
-def _validation_exception_handler(
-    _: Request, exc: RequestValidationError
-) -> JSONResponse:
+def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     message = exc.errors()[0]["msg"] if exc.errors() else "Validation error"
     payload = {"error": {"code": "422", "message": message}}
     return JSONResponse(payload, status_code=422)

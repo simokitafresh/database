@@ -22,9 +22,7 @@ def test_add_symbol_duplicate(mocker):
     mocker.patch(
         "app.management.commands.add_symbol.normalize.normalize_symbol", return_value="AAA"
     )
-    mocker.patch(
-        "app.management.commands.add_symbol.db_add_symbol", side_effect=ValueError
-    )
+    mocker.patch("app.management.commands.add_symbol.db_add_symbol", side_effect=ValueError)
 
     result = runner.invoke(cli.app, ["add-symbol", "AAA"])
     assert result.exit_code == 0

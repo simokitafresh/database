@@ -19,4 +19,3 @@ def test_configure_logging_outputs_json(caplog):
     assert data["level"] == "INFO"
     assert data["name"] == "test"
     assert data["message"] == "hello"
-

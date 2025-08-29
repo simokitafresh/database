@@ -124,6 +124,13 @@ def compute_metrics(price_frames: Dict[str, pd.DataFrame]) -> List[dict]:
         drawdowns = 1.0 - curve / curve.cummax()
         max_dd = float(drawdowns.max()) if n > 0 else 0.0
 
+        if not np.isfinite(cagr):
+            cagr = 0.0
+        if not np.isfinite(stdev):
+            stdev = 0.0
+        if not np.isfinite(max_dd):
+            max_dd = 0.0
+
         results.append(
             {
                 "symbol": symbol,

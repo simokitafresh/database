@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from datetime import date, timedelta
 from typing import Optional
-from urllib.error import HTTPError
+from urllib.error import HTTPError as URLlibHTTPError
 
 import pandas as pd
 import requests
+from requests.exceptions import HTTPError as RequestsHTTPError
 import yfinance as yf
 
 from app.core.config import Settings
@@ -76,12 +77,16 @@ def fetch_prices(
                 df = df.drop(columns=["adj_close"])
             return df
         except (
-            HTTPError,
+            URLlibHTTPError,
+            RequestsHTTPError,
             TimeoutError,
             requests.exceptions.Timeout,
             requests.exceptions.ReadTimeout,
             requests.exceptions.ConnectTimeout,
         ) as exc:  # pragma: no cover - branch executed in tests
+            status = getattr(exc, "code", None) or getattr(
+                getattr(exc, "response", None), "status_code", None
+            )
             retryable = isinstance(
                 exc,
                 (
@@ -90,10 +95,7 @@ def fetch_prices(
                     requests.exceptions.ReadTimeout,
                     requests.exceptions.ConnectTimeout,
                 ),
-            ) or getattr(exc, "code", None) in {
-                429,
-                999,
-            }
+            ) or status in {429, 999}
             if retryable and attempts < max_attempts - 1:
                 time.sleep(delay)
                 delay = min(delay * 2, settings.FETCH_BACKOFF_MAX_SECONDS)

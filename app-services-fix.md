@@ -73,14 +73,14 @@ ID は一意。
 
 A. イベントループ阻害の解消（最優先）
 
-[ ] A-01: fetcher の呼び出しをスレッドプールでオフロード
+[x] A-01: fetcher の呼び出しをスレッドプールでオフロード
 目的: async ルートでのブロッキング回避。
 変更: app/api/v1/prices.py の fetcher.fetch_prices(...) 呼び出しを from starlette.concurrency import run_in_threadpool に置き換え、await run_in_threadpool(fetcher.fetch_prices, actual, fetch_start, seg_to, settings=settings) とする。
 完了条件: 既存の tests/unit/test_prices_* がすべて GREEN。高負荷時でもイベントループを塞がない（コード上でブロッキング呼び出しが消えること）。
 根拠: ルートは async def / fetcher は time.sleep を利用。
 変更ファイル: app/api/v1/prices.py
 
-[ ] A-02: 逐次化されているシンボル処理に並行度制限を導入（任意だが効果大）
+[x] A-02: 逐次化されているシンボル処理に並行度制限を導入（任意だが効果大）
 目的: 上流 API 呼び出しのスループット最適化と過負荷抑制。
 変更: settings.YF_REQ_CONCURRENCY を用い、anyio.Semaphore でシンボルごとの run_in_threadpool を gather しながら同時実行数を制御。
 完了条件: ユニットテストで同時実行数上限（モックで sleep）を検証（最大 N 回以上同時に呼ばれない）。
@@ -90,7 +90,7 @@ A. イベントループ阻害の解消（最優先）
 
 B. HTTP エラー判定の互換性強化
 
-[ ] B-01: requests.exceptions.HTTPError にも対応
+[x] B-01: requests.exceptions.HTTPError にも対応
 目的: 429/999 を確実にリトライ対象にする。
 変更: app/services/fetcher.py で from urllib.error import HTTPError as URLlibHTTPError および from requests.exceptions import HTTPError as RequestsHTTPError をインポートし、
 except (URLlibHTTPError, RequestsHTTPError, TimeoutError) as exc: のように束ねる。
@@ -102,7 +102,7 @@ test_fetcher_retries_on_requests_http_error_429: requests.exceptions.HTTPError(r
 変更ファイル: app/services/fetcher.py, tests/unit/test_fetcher_retry_timeout.py（または新規）
 
 
-[ ] B-02: 「999」も確実に拾う（Yahoo のレート制御）
+[x] B-02: 「999」も確実に拾う（Yahoo のレート制御）
 目的: HTTP 999 を見逃さない。
 変更: 上記 B-01 の status in {429, 999} 判定で網羅。
 完了条件: 999 をステータスとする例外のモックテストを追加し、リトライ実施が確認できること。
@@ -111,7 +111,7 @@ test_fetcher_retries_on_requests_http_error_429: requests.exceptions.HTTPError(r
 
 C. タイムアウト適用の徹底
 
-[ ] C-01: yfinance へ timeout を明示的に伝播
+[x] C-01: yfinance へ timeout を明示的に伝播
 目的: 行儀の悪い応答でハングしないようにする。
 変更: fetcher.fetch_prices の yf.download(...) に timeout=settings.FETCH_TIMEOUT_SECONDS を kwargs で渡す（サポートされていれば）。非対応なら requests セッションの Timeout を yfinance の内部呼び出しで反映させる代替策をコメントで残す。
 完了条件: 新規テストで yf.download の呼び出し引数に timeout=... が含まれることをモックで検証。
@@ -121,7 +121,7 @@ C. タイムアウト適用の徹底
 
 D. 返却データ整形の堅牢化（改善）
 
-[ ] D-01: 列名正規化のテスト強化
+[x] D-01: 列名正規化のテスト強化
 目的: ["Open","High","Low","Close","Volume"]/"Adj Close" など yfinance 側の差異を安定して正規化。
 変更: 既存の整形ロジックを前提に、Adj Close → adj_close 除去、および 最終的に小文字列 ["open","high","low","close","volume"] で返ることを確認するユニットテストを追加。
 完了条件: テストが通ること（既存の test_fetcher_retry_timeout のカラム検証と整合）。
@@ -130,7 +130,7 @@ D. 返却データ整形の堅牢化（改善）
 
 E. metrics の数値健全性（改善）
 
-[ ] E-01: NaN/inf サニタイズの最終保証
+[x] E-01: NaN/inf サニタイズの最終保証
 目的: ログ収益率の演算で例外値が出ても API は常に有限実数を返す。
 変更: compute_metrics の最終計算後に np.isfinite チェックを入れ、非有限は 0.0 など安全値にフォールバック。
 完了条件: 新規テスト test_metrics_returns_finite_values_even_with_zeros を追加し、0/欠損/一定系列でも float 有限値が返ること。
@@ -140,7 +140,7 @@ E. metrics の数値健全性（改善）
 
 F. パッケージ解決の安定化（小改善）
 
-[ ] F-01: app/services/__init__.py の存在確認と __all__ 定義
+[x] F-01: app/services/__init__.py の存在確認と __all__ 定義
 目的: from app.services import normalize などの 明示的 import がどの環境でも安定するようにする（PEP 420 の名前空間パッケージでも動くが、明示初期化で事故を減らす）。
 変更: __init__.py が無ければ作成し、__all__ = ["fetcher","metrics","normalize","resolver","upsert"] を宣言。
 完了条件: ユニットテストで importlib.reload(app.services); from app.services import normalize が成功すること。

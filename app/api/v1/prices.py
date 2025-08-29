@@ -67,13 +67,17 @@ async def get_prices(
         refetch_days=settings.YF_REFETCH_DAYS,
     )
 
-    # 2) 透過解決済み結果を取得
-    rows = await queries.get_prices_resolved(
-        session=session,
-        symbols=symbols_list,
-        date_from=date_from,
-        date_to=date_to,
-    )
+    # 2) 透過解決済み結果を取得（単一シンボル関数に合わせて結合）
+    rows: List[dict] = []
+    for s in symbols_list:
+        part = await queries.get_prices_resolved(session, s, date_from, date_to)
+        if part:
+            for r in part:
+                if not isinstance(r, dict):
+                    r = dict(r)
+                rows.append(r)
+
+    rows.sort(key=lambda r: (r.get("date"), r.get("symbol")))
 
     n = len(rows)
     if n > settings.API_MAX_ROWS:

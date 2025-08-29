@@ -1,10 +1,76 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def ensure_coverage(
+    session: AsyncSession,
+    symbols: Sequence[str],
+    date_from: date,
+    date_to: date,
+    refetch_days: int,
+) -> None:
+    """
+    For each symbol:
+      1) acquire an advisory lock within a transaction
+      2) find the last existing date
+      3) refetch starting from max(last_date - refetch_days, date_from)
+      4) upsert fetched rows
+    """
+
+    import asyncio
+
+    from app.db.utils import advisory_lock
+    from app.services.fetcher import fetch_prices
+    from app.services.upsert import df_to_rows, upsert_prices_sql
+    from app.core.config import settings
+
+    for symbol in symbols:
+        async with session.begin():
+            await advisory_lock(session, symbol)
+
+            res = await session.execute(
+                text("SELECT MAX(date) AS last_date FROM prices WHERE symbol = :s"),
+                {"s": symbol},
+            )
+            last_date = res.scalar()
+
+            if last_date:
+                start = last_date - timedelta(days=refetch_days)
+                if start < date_from:
+                    start = date_from
+            else:
+                start = date_from
+
+            loop = asyncio.get_running_loop()
+            df = await loop.run_in_executor(
+                None,
+                lambda: fetch_prices(symbol, start, date_to, settings=settings),
+            )
+            if df is None or df.empty:
+                continue
+
+            rows = df_to_rows(df, symbol=symbol, source="yfinance")
+            if not rows:
+                continue
+
+            up_sql = upsert_prices_sql()
+            keys = [
+                "symbol",
+                "date",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "source",
+            ]
+            params = [dict(zip(keys, r)) for r in rows]
+            await session.execute(text(up_sql), params)
 
 # SQL fragments are kept as module-level constants so tests can assert on them
 GET_PRICES_RESOLVED_SQL = (
@@ -44,6 +110,7 @@ async def list_symbols(
 
 
 __all__ = [
+    "ensure_coverage",
     "get_prices_resolved",
     "list_symbols",
     "GET_PRICES_RESOLVED_SQL",

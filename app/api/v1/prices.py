@@ -9,7 +9,7 @@ performs input validation.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, Query, status
@@ -72,14 +72,34 @@ async def get_prices(
 
     did_upsert = False
     for sym in symbol_list:
+        # Resolve potential symbol changes into actual segments once
         pre_segments = resolver.segments_for(sym, start, end, [])
         if not pre_segments:
             continue
+        # Serialise concurrent fetches per symbol
         conn = await session.connection()
         await advisory_lock(conn, sym)
-        segments = resolver.segments_for(sym, start, end, [])
-        for actual, seg_from, seg_to in segments:
-            df = fetcher.fetch_prices(actual, seg_from, seg_to, settings=settings)
+        # After obtaining the lock, check existing DB coverage for each segment
+        for actual, seg_from, seg_to in pre_segments:
+            res = await session.execute(
+                text(
+                    "SELECT max(date) AS last_date "
+                    "FROM prices WHERE symbol = :sym AND date BETWEEN :f AND :t"
+                ),
+                {"sym": actual, "f": seg_from, "t": seg_to},
+            )
+            last_date = getattr(res, "scalar_one_or_none", lambda: None)()
+            if not isinstance(last_date, date):
+                last_date = None
+            # Skip when coverage is already complete
+            if last_date is not None and last_date >= seg_to:
+                continue
+            overlap = timedelta(days=getattr(settings, "YF_REFETCH_DAYS", 7))
+            if last_date is None:
+                fetch_start = seg_from
+            else:
+                fetch_start = max(seg_from, last_date - overlap)
+            df = fetcher.fetch_prices(actual, fetch_start, seg_to, settings=settings)
             rows = upsert.df_to_rows(df, symbol=actual, source="yfinance")
             if rows:
                 sql = upsert.upsert_prices_sql()

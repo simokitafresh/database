@@ -1,4 +1,6 @@
-.PHONY: install test format
+.PHONY: install test format migrate
+
+export ALEMBIC_DATABASE_URL ?= postgresql+psycopg://postgres:postgres@localhost:5432/postgres
 
 install:
 	pip install -r requirements.txt
@@ -9,3 +11,6 @@ test:
 
 format:
 	black .
+
+migrate:
+	alembic upgrade head

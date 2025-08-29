@@ -27,8 +27,9 @@
 
 ### マイグレーションの実行
 
-Alembic は環境変数 `ALEMBIC_DATABASE_URL` もしくは `DATABASE_URL` を参照して
-Postgres に接続します。Docker 環境ではエントリポイントがこれらの変数から
+Alembic は `ALEMBIC_DATABASE_URL` を優先し、無ければ `DATABASE_URL` を使用します。
+`DATABASE_URL` が `postgresql+asyncpg://` の場合でも、Alembic 側で `postgresql+psycopg://` に
+変換して Postgres に接続します。Docker 環境ではエントリポイントがこれらの変数から
 URL を解決し、`alembic upgrade head` を実行します。
 
 ## テスト方針

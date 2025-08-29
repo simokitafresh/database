@@ -13,6 +13,12 @@ except Exception:
 
 # Alembic Config オブジェクトは .ini を表す
 config = context.config
+# --- inject DB URL from env (prefer ALEMBIC_DATABASE_URL, fallback to DATABASE_URL) ---
+env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+if env_url:
+    if env_url.startswith("postgresql+asyncpg://"):
+        env_url = env_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    config.set_main_option("sqlalchemy.url", env_url)
 
 # ログ設定
 if config.config_file_name is not None:
@@ -30,15 +36,21 @@ def _get_db_url() -> str:
       4) alembic.ini の sqlalchemy.url
     """
 
-    x_args = context.get_x_argument(asdict=True)
+    x_args = context.get_x_argument(as_dictionary=True)
     if "db_url" in x_args and x_args["db_url"]:
-        return x_args["db_url"]
+        url = x_args["db_url"]
+    else:
+        env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+        if env_url:
+            url = env_url
+        else:
+            url = config.get_main_option("sqlalchemy.url")
 
-    env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
-    if env_url:
-        return env_url
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+        config.set_main_option("sqlalchemy.url", url)
 
-    return config.get_main_option("sqlalchemy.url")
+    return url
 
 
 def run_migrations_offline() -> None:

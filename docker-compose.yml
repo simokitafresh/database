@@ -10,6 +10,7 @@ services:
       - ./:/app
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
+      ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
     depends_on:
       postgres:
         condition: service_healthy

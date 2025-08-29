@@ -404,11 +404,11 @@ tasks:
   acceptance_criteria:
     - "入力バリデーション／エラーコードが仕様通り"
     - "resolver/normalize/upsert/fetcher が所定順で呼ばれることをモックで確認"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-17"
+  end: "2025-09-17"
+  notes: "Implemented prices endpoint with validation and service orchestration tests"
 
 - id: T064
   title: /v1/metrics 実装（純粋計算）

@@ -155,11 +155,11 @@ tasks:
   description: Alembic を使える状態に
   acceptance_criteria:
     - "env.py が app.db.base.Base を読み込む"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-03"
+  end: "2025-09-03"
+  notes: "Alembic initialized"
 
 - id: T031
   title: 001_init マイグレーション（3テーブル）

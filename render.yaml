@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: api
+    env: docker
+    startCommand: ./docker/entrypoint.sh
+    healthCheckPath: /healthz

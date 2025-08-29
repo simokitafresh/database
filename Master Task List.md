@@ -315,11 +315,11 @@ tasks:
   acceptance_criteria:
     - "429相当例外時に指数バックオフ（sleepはモック）"
     - "last_date - N 起点での再取得ロジックを関数単体で検証"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-12"
+  end: "2025-09-12"
+  notes: "Fetcher with backoff and refetch logic implemented"
 
 - id: T055
   title: db.utils（アドバイザリロック）

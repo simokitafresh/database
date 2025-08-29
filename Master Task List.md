@@ -187,11 +187,11 @@ tasks:
   acceptance_criteria:
     - "スクリプト内に 'CREATE OR REPLACE FUNCTION get_prices_resolved' 文字列がある"
     - "ロールバックで DROP FUNCTION がある"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-05"
+  end: "2025-09-05"
+  notes: "Function migration added"
 
 # ========= 4. スキーマ & 依存注入 =========
 - id: T040

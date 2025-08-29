@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.core.config import settings
-from app.api.deps import get_session
 import app.api.v1.prices as prices
+from app.api.deps import get_session
+from app.core.config import settings
+from app.main import app
 
 
 @pytest.fixture
@@ -32,7 +32,12 @@ def test_prices_returns_413_when_rows_exceed_limit(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(prices.queries, "ensure_coverage", AsyncMock(), raising=False)
-    monkeypatch.setattr(prices.queries, "get_prices_resolved", AsyncMock(return_value=[{}, {}]), raising=False)
+    monkeypatch.setattr(
+        prices.queries,
+        "get_prices_resolved",
+        AsyncMock(return_value=[{}, {}]),
+        raising=False,
+    )
     monkeypatch.setattr(settings, "API_MAX_ROWS", 1)
 
     resp = client.get(
@@ -58,4 +63,3 @@ def test_prices_empty_symbols_returns_empty_list(
     assert resp.json() == []
     ec.assert_not_called()
     gr.assert_not_called()
-

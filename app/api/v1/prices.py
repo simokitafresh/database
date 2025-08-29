@@ -7,12 +7,11 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api.deps import get_session  # AsyncSession 依存性
 from app.core.config import settings
+from app.db import queries
 from app.schemas.prices import PriceRowOut
 from app.services.normalize import normalize_symbol
-from app.api.deps import get_session  # AsyncSession 依存性
-from app.db import queries
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -67,20 +66,15 @@ async def get_prices(
         refetch_days=settings.YF_REFETCH_DAYS,
     )
 
-    # 2) 透過解決済み結果を取得（単一シンボル関数に合わせて結合）
-    rows: List[dict] = []
-    for s in symbols_list:
-        part = await queries.get_prices_resolved(session, s, date_from, date_to)
-        if part:
-            for r in part:
-                if not isinstance(r, dict):
-                    r = dict(r)
-                rows.append(r)
+    # 2) 透過解決済み結果を取得
+    rows = await queries.get_prices_resolved(
+        session=session,
+        symbols=symbols_list,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
-    rows.sort(key=lambda r: (r.get("date"), r.get("symbol")))
-
-    n = len(rows)
-    if n > settings.API_MAX_ROWS:
+    if len(rows) > settings.API_MAX_ROWS:
         raise HTTPException(status_code=413, detail="response too large")
     dt_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
@@ -89,7 +83,7 @@ async def get_prices(
             symbols=symbols_list,
             date_from=str(date_from),
             date_to=str(date_to),
-            rows=n,
+            rows=len(rows),
             duration_ms=dt_ms,
         ),
     )

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -6,7 +7,8 @@ try:
     # Pydantic v2
     from pydantic import BaseModel, Field, field_validator
 except Exception:  # v1 fallback
-    from pydantic import BaseModel, Field, validator as field_validator  # type: ignore
+    from pydantic import BaseModel, Field  # type: ignore
+    from pydantic import validator as field_validator
 
 
 class PriceRowOut(BaseModel):

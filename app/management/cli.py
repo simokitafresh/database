@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import typer
 
-from app.services import normalize
 from app.management.commands import add_symbol as add_symbol_cmd
+from app.services import normalize
 
 app = typer.Typer()
 

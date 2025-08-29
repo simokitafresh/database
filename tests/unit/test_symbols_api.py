@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.api.deps import get_session
+from app.main import app
 
 
 def test_symbols_active_param_is_boolean():

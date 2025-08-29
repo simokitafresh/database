@@ -5,7 +5,6 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-
 TRADING_DAYS_PER_YEAR = 252
 
 

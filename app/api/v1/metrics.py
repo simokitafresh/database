@@ -13,7 +13,6 @@ from app.schemas.metrics import MetricsOut
 from app.services import normalize
 from app.services.metrics import compute_metrics
 
-
 router = APIRouter()
 
 

@@ -2,6 +2,7 @@ from datetime import date
 from urllib.error import HTTPError
 
 import pandas as pd
+
 from app.core.config import Settings
 from app.services.fetcher import fetch_prices
 

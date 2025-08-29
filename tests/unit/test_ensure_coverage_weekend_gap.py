@@ -1,4 +1,5 @@
 from datetime import date
+
 import pytest
 
 from app.db import queries as q

@@ -544,11 +544,11 @@ tasks:
   description: ローカル実行のための構成ファイル（コードのみ）
   acceptance_criteria:
     - "services.api.build.context が ./ に設定されていること（YAML検証）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-25"
+  end: "2025-09-25"
+  notes: "docker-compose for dev added"
 
 - id: T112
   title: render.yaml（Render用設定ファイル）

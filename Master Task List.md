@@ -646,11 +646,11 @@ tasks:
   description: 最終的なI/Oの契約テスト
   acceptance_criteria:
     - "symbol が現行名で統一され、source_symbol が任意で含まれる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-10-01"
+  end: "2025-10-01"
+  notes: "Added E2E test verifying symbol normalization and source_symbol field"
 
 - id: T151
   title: /v1/metrics E2E 疑似

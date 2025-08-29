@@ -171,11 +171,11 @@ tasks:
   acceptance_criteria:
     - "マイグレーションスクリプトに create_table('symbols'), create_table('symbol_changes'), create_table('prices') が存在"
     - "UNIQUE(new_symbol), CHECK群 がマイグレーションに明示"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-04"
+  end: "2025-09-04"
+  notes: "Initial schema migration added"
 
 - id: T032
   title: 002_fn_prices_resolved マイグレーション（SQL関数）

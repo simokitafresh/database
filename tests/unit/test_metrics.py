@@ -14,8 +14,8 @@ def test_compute_metrics_formulas():
     n = len(log_ret)
     expected_cagr = np.exp(log_ret.sum() * 252 / n) - 1
     expected_stdev = log_ret.std(ddof=1) * np.sqrt(252)
-    cum_r = log_ret.cumsum()
-    expected_maxdd = (np.exp(cum_r - cum_r.cummax()) - 1).min()
+    curve = np.exp(log_ret.cumsum())
+    expected_maxdd = (1 - curve / curve.cummax()).max()
 
     assert result['symbol'] == 'AAA'
     assert result['n_days'] == n

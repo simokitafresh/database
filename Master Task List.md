@@ -439,11 +439,11 @@ tasks:
   description: DB用関数のシグネチャ確立
   acceptance_criteria:
     - "SQL文字列に get_prices_resolved が含まれること"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-19"
+  end: "2025-09-19"
+  notes: "Added query wrappers for symbols and prices"
 
 # ========= 8. 管理CLI =========
 - id: T080
@@ -459,11 +459,11 @@ tasks:
   description: CLIの土台
   acceptance_criteria:
     - "'--help' 実行でサブコマンドが見える（テスト）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-20"
+  end: "2025-09-20"
+  notes: "Typer CLI skeleton with add/verify commands"
 
 - id: T081
   title: CLI: add-symbol（DBスタブ）
@@ -477,11 +477,11 @@ tasks:
   acceptance_criteria:
     - "正規化が呼ばれる"
     - "重複時の表示が異なる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-21"
+  end: "2025-09-21"
+  notes: "add-symbol command with normalization and duplicate handling"
 
 # ========= 9. ロギング/ミドルウェア =========
 - id: T090
@@ -495,11 +495,11 @@ tasks:
   description: 運用ログの基礎
   acceptance_criteria:
     - "X-Request-ID がレスポンスに含まれる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-22"
+  end: "2025-09-22"
+  notes: "Request ID middleware with contextvar and header"
 
 # ========= 10. ルータ統合 & main配線 =========
 - id: T100
@@ -511,11 +511,11 @@ tasks:
   description: アプリ配線の完成
   acceptance_criteria:
     - "TestClientで /healthz, /v1/prices, /v1/metrics のルーティングが成功（モックで）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-23"
+  end: "2025-09-23"
+  notes: "main app wiring with middleware and routers"
 
 # ========= 11. コンテナ & 実行ファイル =========
 - id: T110

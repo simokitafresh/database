@@ -5,6 +5,9 @@ from fastapi import FastAPI
 from app.api.errors import init_error_handlers
 from app.api.v1.health import router as health_router
 from app.api.v1.router import router as v1_router
+from app.core.config import settings
+from app.core.cors import create_cors_middleware
+from app.core.middleware import RequestIDMiddleware
 
 
 @asynccontextmanager
@@ -26,6 +29,11 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 init_error_handlers(app)
+
+app.add_middleware(RequestIDMiddleware)
+cors = create_cors_middleware(settings)
+if cors:
+    app.add_middleware(*cors)
 
 app.include_router(health_router)
 app.include_router(v1_router)

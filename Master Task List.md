@@ -577,11 +577,11 @@ tasks:
   description: 防御的プログラミング
   acceptance_criteria:
     - "超過時のエラーコード/メッセージが仕様準拠"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-27"
+  end: "2025-09-27"
+  notes: "Added explicit limits tests for symbols and rows"
 
 - id: T121
   title: /v1/metrics 共通営業日の交差

@@ -11,13 +11,25 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+        # 任意: DB再起動時にAPIも再起動させたい場合は次行を有効化
+        # restart: true
   postgres:
     image: postgres:16
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+    healthcheck:
+      # Postgres が接続受付可能かをチェック（公式手順）
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres} -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
   adminer:
     image: adminer:4
     restart: always

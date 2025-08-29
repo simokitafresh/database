@@ -594,11 +594,11 @@ tasks:
   description: 計算の厳密化
   acceptance_criteria:
     - "交差前後で N が期待どおりに変化"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-28"
+  end: "2025-09-28"
+  notes: "Added common trading day intersection and tests"
 
 # ========= 13. 取得フローの統合（モックで） =========
 - id: T130

@@ -76,10 +76,22 @@ def compute_metrics(price_frames: Dict[str, pd.DataFrame]) -> List[dict]:
     # Determine common trading days across all symbols
     common_index = _common_trading_index(series_map)
 
+    if len(common_index) <= 1:
+        return [
+            {
+                "symbol": symbol,
+                "cagr": 0.0,
+                "stdev": 0.0,
+                "max_drawdown": 0.0,
+                "n_days": 0,
+            }
+            for symbol in price_frames.keys()
+        ]
+
     results: List[dict] = []
     for symbol in price_frames.keys():
         series = series_map.get(symbol)
-        if series is None or len(common_index) == 0:
+        if series is None:
             results.append(
                 {
                     "symbol": symbol,
@@ -91,7 +103,7 @@ def compute_metrics(price_frames: Dict[str, pd.DataFrame]) -> List[dict]:
             )
             continue
 
-        aligned = series.reindex(common_index).dropna()
+        aligned = series.reindex(common_index)
         log_ret = np.log(aligned / aligned.shift(1)).dropna()
         n = int(log_ret.shape[0])
 

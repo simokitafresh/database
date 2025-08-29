@@ -1,15 +1,22 @@
 import os
 from logging.config import fileConfig
+import sys
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Ensure repo root is importable: migrations -> app -> <repo root>
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 # NOTE: app.db.base から Declarative Base を import（モデルの Metadata 集約）
 try:
-    from app.db.base import Base  # type: ignore
-except Exception:
+    from app.db.base import Base  # preferred
+except (ModuleNotFoundError, ImportError):
     # プロジェクト構成が異なる場合はここを調整
-    from app.db.models import Base  # fallback
+    from app.db.models import Base  # fallback if Base is defined here
 
 # Alembic Config オブジェクトは .ini を表す
 config = context.config

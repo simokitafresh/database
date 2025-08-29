@@ -8,13 +8,11 @@ PR#1: Migrations 一元化（Postgres に統一）
 
 ToDo（コミット粒度）
 
-1. feat(migrations): support ALEMBIC_DATABASE_URL and -x db_url
+1. feat(migrations): support ALEMBIC_DATABASE_URL and -x db_url ✅
 
+2. chore(entrypoint): set -euo pipefail and export ALEMBIC_DATABASE_URL ✅
 
-2. chore(entrypoint): set -euo pipefail and export ALEMBIC_DATABASE_URL
-
-
-3. docs(readme): note about Postgres migration source（任意）
+3. docs(readme): note about Postgres migration source（任意） ✅
 
 
 

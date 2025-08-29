@@ -421,11 +421,11 @@ tasks:
   description: メトリクスAPI
   acceptance_criteria:
     - "出力が MetricsOut の配列であること"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-18"
+  end: "2025-09-18"
+  notes: "Implemented metrics endpoint and unit test"
 
 # ========= 7. DB クエリ層 =========
 - id: T070

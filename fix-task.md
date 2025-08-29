@@ -762,13 +762,13 @@ PR#7: 観測性 & CI（ruff/black/mypy）
 
 ToDo（コミット粒度）
 
-1. feat(api): log processing stats (rows, duration, symbols)
+1. feat(api): log processing stats (rows, duration, symbols) ✅
 
 
-2. chore(ci): add ruff/black/mypy steps
+2. chore(ci): add ruff/black/mypy steps ✅
 
 
-3. chore(cfg): add pyproject.toml for tooling
+3. chore(cfg): add pyproject.toml for tooling ✅
 
 
 

@@ -135,11 +135,11 @@ tasks:
     - "CHECK(高値/安値/前後関係) 定義済"
     - "symbol_changes: UNIQUE(new_symbol) と PK(old_symbol, change_date)"
     - "PostgreSQL方言へDDLコンパイル文字列にPK/FK/CHECKが含まれることをテスト"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-02"
+  end: "2025-09-02"
+  notes: "SQLAlchemy models with constraints added"
 
 # ========= 3. Alembic =========
 - id: T030

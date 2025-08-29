@@ -4,9 +4,20 @@ from fastapi import FastAPI
 
 
 @asynccontextmanager
-def lifespan(_: FastAPI):
-    """Placeholder lifespan for future DB setup."""
-    yield
+async def lifespan(_: FastAPI):
+    """Placeholder lifespan for future DB setup.
+
+    FastAPI requires an *asynchronous* generator when using
+    ``@asynccontextmanager``. Returning a synchronous generator causes
+    ``AttributeError('__anext__')`` during application startup. This async
+    variant ensures compatibility.
+    """
+    try:
+        # Startup hooks (e.g., schedule DB initialisation) would go here.
+        yield
+    finally:
+        # Shutdown hooks (cleanup resources) would go here.
+        pass
 
 
 app = FastAPI(lifespan=lifespan)

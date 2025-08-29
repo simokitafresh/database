@@ -17,7 +17,14 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
 
-__all__ = ["Settings"]
+# Expose a module-level singleton for convenient import across the app.
+# Usage: ``from app.core.config import settings``
+settings = Settings()
+
+
+__all__ = ["Settings", "settings"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import date
 from typing import List
 
@@ -13,6 +15,7 @@ from app.db import queries
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _parse_and_validate_symbols(symbols_raw: str) -> List[str]:
@@ -55,6 +58,7 @@ async def get_prices(
 
     # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
     # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
+    t0 = time.perf_counter()
     await queries.ensure_coverage(
         session=session,
         symbols=symbols_list,
@@ -71,10 +75,21 @@ async def get_prices(
         date_to=date_to,
     )
 
-    if len(rows) > settings.API_MAX_ROWS:
+    n = len(rows)
+    if n > settings.API_MAX_ROWS:
         raise HTTPException(status_code=413, detail="response too large")
+    dt_ms = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "prices served",
+        extra=dict(
+            symbols=symbols_list,
+            date_from=str(date_from),
+            date_to=str(date_to),
+            rows=n,
+            duration_ms=dt_ms,
+        ),
+    )
     return rows
 
 
 __all__ = ["router", "get_prices"]
-

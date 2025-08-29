@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.errors import init_error_handlers
+from app.api.v1.health import router as health_router
+from app.api.v1.router import router as v1_router
 
 
 @asynccontextmanager
@@ -25,8 +27,5 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 init_error_handlers(app)
 
-
-@app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    """Health check endpoint returning a simple OK response."""
-    return {"status": "ok"}
+app.include_router(health_router)
+app.include_router(v1_router)

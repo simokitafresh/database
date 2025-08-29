@@ -369,11 +369,11 @@ tasks:
   description: 健康チェック
   acceptance_criteria:
     - "GET /healthz が {status:'ok'} を返す"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-15"
+  end: "2025-09-15"
+  notes: "Implemented health router and aggregator"
 
 - id: T062
   title: /v1/symbols（DBスタブで実装）

@@ -10,9 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.utils import advisory_lock as with_symbol_lock
+from app.db.utils import advisory_lock
 from app.services.fetcher import fetch_prices
 from app.services.upsert import df_to_rows, upsert_prices_sql
+
+# Preserve legacy alias for tests and backward compatibility
+with_symbol_lock = advisory_lock
 
 
 async def fetch_prices_df(symbol: str, start: date, end: date):
@@ -79,9 +82,7 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
             (SELECT MIN(first_weekday_missing) FROM weekday_gaps) AS first_missing_weekday
         """
     )
-    res = await session.execute(
-        sql.bindparams(symbol=symbol, date_from=date_from, date_to=date_to)
-    )
+    res = await session.execute(sql.bindparams(symbol=symbol, date_from=date_from, date_to=date_to))
     row = res.mappings().first() or {}
     return dict(row)
 
@@ -103,12 +104,13 @@ async def ensure_coverage(
 
     for symbol in symbols:
         async with session.begin():
-            await with_symbol_lock(session, symbol)
+            await advisory_lock(session, symbol)
 
             cov = await _get_coverage(session, symbol, date_from, date_to)
 
             last_date: Optional[date] = cov.get("last_date")
             first_date: Optional[date] = cov.get("first_date")
+            has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
             first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
 
             if last_date:
@@ -116,7 +118,14 @@ async def ensure_coverage(
             else:
                 c1 = date_from
 
-            c2 = max(date_from, first_missing_weekday) if first_missing_weekday else None
+            if has_gaps:
+                if first_missing_weekday:
+                    c2 = max(date_from, first_missing_weekday)
+                else:
+                    c2 = date_from
+            else:
+                c2 = None
+
             c3 = date_from if (first_date and first_date > date_from) else None
 
             start = min([c for c in (c1, c2, c3) if c is not None])

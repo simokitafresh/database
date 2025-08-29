@@ -49,7 +49,7 @@ def fetch_prices(
 
     attempts = 0
     delay = 1.0
-    max_attempts = 3
+    max_attempts = settings.FETCH_MAX_RETRIES
 
     while True:
         try:
@@ -74,12 +74,20 @@ def fetch_prices(
             if "adj_close" in df.columns:
                 df = df.drop(columns=["adj_close"])
             return df
-        except HTTPError as exc:  # pragma: no cover - branch executed in tests
-            if getattr(exc, "code", None) in {429, 999} and attempts < max_attempts - 1:
+        except (
+            HTTPError,
+            TimeoutError,
+        ) as exc:  # pragma: no cover - branch executed in tests
+            retryable = isinstance(exc, TimeoutError) or getattr(exc, "code", None) in {
+                429,
+                999,
+            }
+            if retryable and attempts < max_attempts - 1:
                 time.sleep(delay)
-                delay *= 2
+                delay = min(delay * 2, settings.FETCH_BACKOFF_MAX_SECONDS)
                 attempts += 1
                 continue
             raise
+
 
 __all__ = ["fetch_prices"]

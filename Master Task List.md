@@ -630,11 +630,11 @@ tasks:
   description: 信頼性の確保
   acceptance_criteria:
     - "最大試行超過で例外が上がる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-30"
+  end: "2025-09-30"
+  notes: "Implemented configurable timeout, retries and backoff"
 
 # ========= 15. エンドツーエンド（疑似） =========
 - id: T150

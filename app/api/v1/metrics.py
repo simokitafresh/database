@@ -5,6 +5,7 @@ from typing import Dict, List
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
@@ -45,11 +46,12 @@ async def get_metrics(
         )
 
     symbol_list = [normalize.normalize_symbol(s) for s in symbols.split(",") if s]
-    result = await session.execute(
-        "SELECT symbol, date, close FROM prices WHERE symbol = ANY(:symbols) "
-        "AND date BETWEEN :from AND :to",
-        {"symbols": symbol_list, "from": from_, "to": to},
-    )
+    query = text(
+        "SELECT symbol, date, close FROM prices WHERE symbol IN :symbols "
+        "AND date BETWEEN :from AND :to"
+    ).bindparams(bindparam("symbols", expanding=True))
+    params = {"symbols": tuple(symbol_list), "from": from_, "to": to}
+    result = await session.execute(query, params)
     rows = [_as_mapping(r) for r in result.fetchall()]
 
     frames: Dict[str, pd.DataFrame] = {}

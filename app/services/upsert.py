@@ -1,32 +1,32 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Dict, List
 
 import pandas as pd
 
 
-def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Tuple]:
+def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, object]]:
     """Convert a price DataFrame into rows for bulk upsert.
 
     Rows containing NaN values are skipped. Dates are converted to ``date`` and
     numeric fields are cast to appropriate Python types for insertion.
     """
 
-    rows: List[Tuple] = []
+    rows: List[Dict[str, object]] = []
     for date, row in df.iterrows():
         if row.isna().any():
             continue
         rows.append(
-            (
-                symbol,
-                date.date(),
-                float(row["open"]),
-                float(row["high"]),
-                float(row["low"]),
-                float(row["close"]),
-                int(row["volume"]),
-                source,
-            )
+            {
+                "symbol": symbol,
+                "date": date.date(),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": int(row["volume"]),
+                "source": source,
+            }
         )
     return rows
 

@@ -13,6 +13,8 @@ def _setup_session(rows: list) -> AsyncMock:
     result = MagicMock()
     result.fetchall.return_value = rows
     session.execute.return_value = result
+    conn = AsyncMock()
+    session.connection.return_value = conn
     return session
 
 
@@ -121,11 +123,21 @@ def test_service_call_order(monkeypatch, mocker):
     mocker.patch(
         "app.api.v1.prices.upsert.upsert_prices_sql", return_value=""
     )
+    mocker.patch(
+        "app.api.v1.prices.advisory_lock", side_effect=_record("lock")
+    )
 
     client = TestClient(app)
     resp = client.get("/v1/prices?symbols=A&from=2023-01-01&to=2023-01-02")
     assert resp.status_code == 200
-    assert calls == ["normalize", "resolver", "fetcher", "upsert"]
+    assert calls == [
+        "normalize",
+        "resolver",
+        "lock",
+        "resolver",
+        "fetcher",
+        "upsert",
+    ]
 
     app.dependency_overrides.clear()
 

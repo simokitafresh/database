@@ -1,5 +1,7 @@
 import pandas as pd
 from datetime import date
+from unittest.mock import AsyncMock
+
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -64,6 +66,9 @@ def test_prices_commits_and_filters(mocker):
 
         async def commit(self):
             calls["committed"] = True
+
+        async def connection(self):
+             return AsyncMock()
 
     from app.api.deps import get_session as real_dep
 

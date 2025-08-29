@@ -251,13 +251,13 @@ PR#3: UTC/TZ 保証 & DB Check 制約
 
 ToDo（コミット粒度）
 
-1. feat(schema): enforce tz-aware UTC for last_updated
+1. feat(schema): enforce tz-aware UTC for last_updated ✅
 
 
-2. feat(db): add CHECK constraints for prices (ohlc/volume)
+2. feat(db): add CHECK constraints for prices (ohlc/volume) ✅
 
 
-3. migration(db): create checks for existing table
+3. migration(db): create checks for existing table ✅
 
 
 

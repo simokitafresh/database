@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Database models for core tables."""
+
+from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy import Index
@@ -49,13 +49,18 @@ class Price(Base):
             ["symbol"], ["symbols.symbol"], onupdate="CASCADE", ondelete="RESTRICT"
         ),
         sa.CheckConstraint(
-            "high >= low AND high >= open AND high >= close AND low <= open AND low <= close",
-            name="ck_prices_high_low_range",
+            "low <= LEAST(open, close)",
+            name="ck_prices_low_le_open_close",
+        ),
+        sa.CheckConstraint(
+            "GREATEST(open, close) <= high",
+            name="ck_prices_open_close_le_high",
         ),
         sa.CheckConstraint(
             "open > 0 AND high > 0 AND low > 0 AND close > 0",
-            name="ck_prices_positive",
+            name="ck_prices_positive_ohlc",
         ),
+        sa.CheckConstraint("volume >= 0", name="ck_prices_volume_nonneg"),
     )
 
     symbol = sa.Column(sa.String, nullable=False)

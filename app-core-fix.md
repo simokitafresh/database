@@ -100,13 +100,13 @@ python -m uvicorn app.main:app
 
 ID	範囲	タスク（1 行動）	完了の定義（DoD）	検証方法	進捗
 
-T1	app/main.py	app.add_middleware(*cors) を キーワード展開 に変更（Middleware, options = cors; app.add_middleware(Middleware, **options)）	アプリが起動し、TypeError が出ない	python -m uvicorn app.main:app が正常起動する	☐
-T2	tests/	起動健全性テストを追加：from app.main import app → TestClient(app) を開いて 404 でも良いので 1 リクエストが成功する	CI/ローカルでテストが緑	pytest -q がパスする（新規テスト名例：test_app_starts）	☐
-T3	app/core/cors.py	create_cors_middleware の ユニットテスト（3 ケース：①空文字→None、②*→allow_origin_regex & allow_credentials=False、③複数 Origin→allow_origins & allow_credentials=True）	3 ケースの期待が満たされる	追加テスト tests/test_core_cors.py がパス	☐
-T4	app/core/middleware.py	RequestIDMiddleware の ユニット/薄い結合テスト（ヘッダ付与・ContextVar 取得）	① レスポンスに X-Request-ID が付く ② get_request_id() が値を返す	tests/test_request_id_middleware.py がパス	☐
-T5	app/core/config.py	Settings の 環境変数上書きテスト（例：CORS_ALLOW_ORIGINS="*" を読み込める）	期待値で Settings().CORS_ALLOW_ORIGINS が得られる	monkeypatch で環境を差し替えるテストがパス	☐
-T6	Makefile + 依存	format ターゲットの 実行可能化：requirements.txt に black を追加 または pipx run black . に変更	make format が素の環境で成功	make format の実行結果が 0 戻り値	☐
-T7	ルート	ドキュメント更新：README に起動手順（CORS 設定のヒント含む）を明記	README 更新が差分に含まれる	仮想環境新規構築→README 手順で起動成功	☐
+T1	app/main.py	app.add_middleware(*cors) を キーワード展開 に変更（Middleware, options = cors; app.add_middleware(Middleware, **options)）	アプリが起動し、TypeError が出ない	python -m uvicorn app.main:app が正常起動する	Done
+T2	tests/	起動健全性テストを追加：from app.main import app → TestClient(app) を開いて 404 でも良いので 1 リクエストが成功する	CI/ローカルでテストが緑	pytest -q がパスする（新規テスト名例：test_app_starts）	Done
+T3	app/core/cors.py	create_cors_middleware の ユニットテスト（3 ケース：①空文字→None、②*→allow_origin_regex & allow_credentials=False、③複数 Origin→allow_origins & allow_credentials=True）	3 ケースの期待が満たされる	追加テスト tests/test_core_cors.py がパス	Done
+T4	app/core/middleware.py	RequestIDMiddleware の ユニット/薄い結合テスト（ヘッダ付与・ContextVar 取得）	① レスポンスに X-Request-ID が付く ② get_request_id() が値を返す	tests/test_request_id_middleware.py がパス	Done
+T5	app/core/config.py	Settings の 環境変数上書きテスト（例：CORS_ALLOW_ORIGINS="*" を読み込める）	期待値で Settings().CORS_ALLOW_ORIGINS が得られる	monkeypatch で環境を差し替えるテストがパス	Done
+T6	Makefile + 依存	format ターゲットの 実行可能化：requirements.txt に black を追加 または pipx run black . に変更	make format が素の環境で成功	make format の実行結果が 0 戻り値	Done
+T7	ルート	ドキュメント更新：README に起動手順（CORS 設定のヒント含む）を明記	README 更新が差分に含まれる	仮想環境新規構築→README 手順で起動成功	Done
 
 
 > 注: T2–T5 は すべて小さく・独立 に動くように作っています。テストはネットワーク通信不要（依存に pytest-asyncio 等あり）。

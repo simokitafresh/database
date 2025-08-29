@@ -13,6 +13,18 @@
    make test
    ```
 
+## アプリケーションの起動
+
+1. 必要に応じて CORS を許可する Origin を設定します。
+   例: 任意のオリジンを許可する場合
+   ```bash
+   export CORS_ALLOW_ORIGINS="*"
+   ```
+2. アプリを起動します。
+   ```bash
+   python -m uvicorn app.main:app
+   ```
+
 ### マイグレーションの実行
 
 Alembic は環境変数 `ALEMBIC_DATABASE_URL` もしくは `DATABASE_URL` を参照して

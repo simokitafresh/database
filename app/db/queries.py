@@ -61,14 +61,16 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
         ),
         weekdays_between AS (
             SELECT g.cur_date, g.next_date, (gs.d)::date AS d
-            FROM gaps g
+            FROM (
+                -- LATERAL 実行前に NULL を除外しておく（NULL stop を防止）
+                SELECT * FROM gaps WHERE next_date IS NOT NULL
+            ) AS g
             JOIN LATERAL generate_series(
-                    g.cur_date + INTERVAL '1 day',
-                    g.next_date - INTERVAL '1 day',
-                    INTERVAL '1 day'
-                 ) AS gs(d) ON TRUE
-            WHERE g.next_date IS NOT NULL
-              AND EXTRACT(ISODOW FROM gs.d) BETWEEN 1 AND 5
+                g.cur_date + INTERVAL '1 day',
+                g.next_date - INTERVAL '1 day',
+                INTERVAL '1 day'
+            ) AS gs(d) ON TRUE
+            WHERE EXTRACT(ISODOW FROM gs.d) BETWEEN 1 AND 5
         ),
         weekday_gaps AS (
             SELECT cur_date, next_date, MIN(d)::date AS first_weekday_missing

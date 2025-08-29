@@ -243,11 +243,11 @@ tasks:
   description: 入出力の前処理
   acceptance_criteria:
     - "brk.b -> BRK-B, 7203.T -> 7203.T を満たす"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-08"
+  end: "2025-09-08"
+  notes: "Symbol normalization implemented"
 
 - id: T051
   title: services.resolver（1ホップ区間分割）

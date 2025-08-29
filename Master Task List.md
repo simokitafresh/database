@@ -279,11 +279,11 @@ tasks:
     - "CAGR = exp(sum(r)*252/N)-1"
     - "STDEV = std(r, ddof=1)*sqrt(252)"
     - "MaxDD 計算が既知事例で一致"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-10"
+  end: "2025-09-10"
+  notes: "Metrics calculation implemented"
 
 - id: T053
   title: services.upsert（DataFrame→UPSERT 準備）

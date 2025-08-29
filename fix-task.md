@@ -139,13 +139,13 @@ PR#2: /v1/prices バリデーション & 上限
 
 ToDo（コミット粒度）
 
-1. feat(api): add strict validation for /v1/prices (symbols/date)
+1. feat(api): add strict validation for /v1/prices (symbols/date) ✅
 
 
-2. feat(api): enforce API_MAX_ROWS=413 after resolving
+2. feat(api): enforce API_MAX_ROWS=413 after resolving ✅
 
 
-3. test(api): add e2e for 422/413/empty-symbols
+3. test(api): add e2e for 422/413/empty-symbols ✅
 
 
 

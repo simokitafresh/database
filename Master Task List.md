@@ -225,11 +225,11 @@ tasks:
   description: ルータで使うDBセッション依存を定義
   acceptance_criteria:
     - "FastAPI Depends で awaitable session を供給できる擬似テスト"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-07"
+  end: "2025-09-07"
+  notes: "DB session dependency implemented"
 
 # ========= 5. サービス（ビジネスロジック） =========
 - id: T050

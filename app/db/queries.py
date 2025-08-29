@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import date, timedelta
 from typing import Any, List, Mapping, Optional, Sequence, cast
 
+import anyio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db.utils import advisory_lock
@@ -17,6 +18,8 @@ from app.services.upsert import df_to_rows, upsert_prices_sql
 # Preserve legacy alias for tests and backward compatibility
 with_symbol_lock = advisory_lock
 
+_fetch_semaphore = anyio.Semaphore(settings.YF_REQ_CONCURRENCY)
+
 
 async def fetch_prices_df(symbol: str, start: date, end: date):
     """Background wrapper around :func:`fetch_prices`.
@@ -24,10 +27,10 @@ async def fetch_prices_df(symbol: str, start: date, end: date):
     ``fetch_prices`` is synchronous; run it in a thread to avoid blocking.
     """
 
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        None, lambda: fetch_prices(symbol, start, end, settings=settings)
-    )
+    async with _fetch_semaphore:
+        return await run_in_threadpool(
+            fetch_prices, symbol, start, end, settings=settings
+        )
 
 
 async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, date_to: date) -> dict:

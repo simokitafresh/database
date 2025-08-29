@@ -15,6 +15,7 @@ def _sample_df():
             "High": [1.0],
             "Low": [1.0],
             "Close": [1.0],
+            "Adj Close": [1.0],
             "Volume": [100],
         },
         index=pd.to_datetime(["2024-01-01"]),
@@ -31,6 +32,7 @@ def test_requests_timeout_is_retried_then_succeeds(mocker):
 
     assert download.call_count == 2
     assert sleep.call_args_list == [mocker.call(1.0)]
+    assert download.call_args.kwargs["timeout"] == settings.FETCH_TIMEOUT_SECONDS
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
 
 

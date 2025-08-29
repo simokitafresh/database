@@ -8,6 +8,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres -h 127.0.0.1"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,6 +28,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install ruff black mypy
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Alembic upgrade (Postgres)
+        env:
+          ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
+        run: alembic upgrade head
+      - name: Alembic downgrade (Postgres)
+        env:
+          ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/postgres
+        run: alembic downgrade base
       - name: Lint (ruff)
         run: ruff check .
       - name: Format (black --check)

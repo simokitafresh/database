@@ -22,7 +22,7 @@ CI と Docker で マイグレーションの up/down を検証できるよう�
 
 1) 依存の追加（Alembic を Postgres 同期ドライバで動かす）
 
-[ ] psycopg を requirements に追加
+[x] psycopg を requirements に追加
 開始条件: 依存の追加作業に入れる
 作業: requirements.txt に 1 行追加（ピン留めポリシーは既存に準拠）
 
@@ -37,7 +37,7 @@ CI と Docker で マイグレーションの up/down を検証できるよう�
 
 2) Alembic が環境変数から URL を読むようにする（かつ asyncpg → psycopg を自動変換）
 
-[ ] app/migrations/env.py に環境変数注入を実装
+[x] app/migrations/env.py に環境変数注入を実装
 開始条件: env.py を編集できる
 作業: 下記パッチを適用（ALEMBIC_DATABASE_URL を優先、無ければ DATABASE_URL。postgresql+asyncpg:// は Alembic 用に postgresql+psycopg:// へ置換）
 
@@ -74,7 +74,7 @@ DATABASE_URL=postgresql+asyncpg://... alembic current でも成功（内部で p
 
 3) SQLite 既定を使わないよう安全化（操作ミス防止）
 
-[ ] alembic.ini の SQLite 既定 URL をコメントアウト or ダミー化
+[x] alembic.ini の SQLite 既定 URL をコメントアウト or ダミー化
 開始条件: alembic.ini を編集できる
 作業: 下記いずれか
 
@@ -92,7 +92,7 @@ DATABASE_URL=postgresql+asyncpg://... alembic current でも成功（内部で p
 
 4) Docker/Compose で Alembic に psycopg URL を渡す
 
-[ ] docker-compose.yml に ALEMBIC_DATABASE_URL を追加
+[x] docker-compose.yml に ALEMBIC_DATABASE_URL を追加
 開始条件: Compose を編集できる
 作業: API サービスの環境変数に追加（アプリは asyncpg、Alembic は psycopg を利用）
 
@@ -115,7 +115,7 @@ ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postg
 
 5) Makefile にワンコマンド・マイグレーションを追加
 
-[ ] make migrate 追加（ローカル検証容易化）
+[x] make migrate 追加（ローカル検証容易化）
 開始条件: Makefile 変更可能
 作業:
 
@@ -139,7 +139,7 @@ ALEMBIC_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postg
 
 6) CI で up/down を検証（回帰を防止）
 
-[ ] GitHub Actions に Postgres サービス＋ Alembic up/down を追加
+[x] GitHub Actions に Postgres サービス＋ Alembic up/down を追加
 開始条件: .github/workflows/ci.yml を編集できる
 作業: 下記のように Postgres サービス、クライアント導入、alembic upgrade/downgrade を追加
 
@@ -195,7 +195,7 @@ jobs:
 
 7) ドキュメント整合（実装に合わせる）
 
-[ ] README のマイグレーション節を実装どおりに微修正
+[x] README のマイグレーション節を実装どおりに微修正
 開始条件: README 編集可
 作業: 「Alembic は ALEMBIC_DATABASE_URL 優先、無ければ DATABASE_URL を使用。DATABASE_URL が asyncpg の場合は Alembic 側で psycopg に変換。」の 1 文を追記。
 検証（DoD）: 新しい手順どおりに ALEMBIC_DATABASE_URL=... alembic upgrade head が成功。

@@ -336,7 +336,7 @@ tasks:
   owner: "assistant"
   start: "2025-09-13"
   end: "2025-09-13"
-  notes: "Added advisory lock helper and test; updated yfinance to latest"
+  notes: "Added advisory lock helper and test; ensured yfinance is upgraded to latest during install"
 
 # ========= 6. API ルータ =========
 - id: T060
@@ -386,11 +386,11 @@ tasks:
   description: 一覧エンドポイントの枠
   acceptance_criteria:
     - "クエリパラメータ active がbool扱いされる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-16"
+  end: "2025-09-16"
+  notes: "Symbols endpoint stub implemented"
 
 - id: T063
   title: /v1/prices（解決区間→不足検知→取得→UPSERT→SELECT の枠）

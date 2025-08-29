@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/v1")
+from .symbols import router as symbols_router
 
-# Placeholder for future v1 endpoints (symbols, prices, metrics)
+router = APIRouter(prefix="/v1")
+router.include_router(symbols_router)
+
+# Placeholder for future v1 endpoints (prices, metrics)

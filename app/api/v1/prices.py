@@ -81,24 +81,66 @@ async def get_prices(
         await advisory_lock(conn, sym)
         # After obtaining the lock, check existing DB coverage for each segment
         for actual, seg_from, seg_to in pre_segments:
-            res = await session.execute(
+            cov = await session.execute(
                 text(
-                    "SELECT max(date) AS last_date "
+                    "SELECT min(date) AS first_date, max(date) AS last_date, count(*) AS n_rows "
                     "FROM prices WHERE symbol = :sym AND date BETWEEN :f AND :t"
                 ),
                 {"sym": actual, "f": seg_from, "t": seg_to},
             )
-            last_date = getattr(res, "scalar_one_or_none", lambda: None)()
-            if not isinstance(last_date, date):
-                last_date = None
-            # Skip when coverage is already complete
-            if last_date is not None and last_date >= seg_to:
-                continue
+            cov_row = getattr(cov, "mappings", lambda: None)()
+            cov_row = cov_row.first() if cov_row else None
+            first_date = cov_row["first_date"] if cov_row else None
+            last_date = cov_row["last_date"] if cov_row else None
+
+            gap_q = text(
+                """
+                WITH seg AS (
+                  SELECT date
+                    FROM prices
+                   WHERE symbol = :sym
+                     AND date BETWEEN :f AND :t
+                   ORDER BY date
+                ),
+                pairs AS (
+                  SELECT
+                    date                                  AS d1,
+                    LEAD(date) OVER (ORDER BY date)       AS d2
+                  FROM seg
+                )
+                SELECT MIN((d1 + INTERVAL '1 day')::date) AS missing_from
+                  FROM pairs
+                 WHERE d2 IS NOT NULL
+                   AND (
+                        (d2 - d1) = INTERVAL '2 day'
+                     OR ((d2 - d1) = INTERVAL '3 day' AND EXTRACT(ISODOW FROM d1) <> 5)
+                     OR  (d2 - d1) > INTERVAL '3 day'
+                   )
+                """
+            )
+            gap_res = await session.execute(gap_q, {"sym": actual, "f": seg_from, "t": seg_to})
+            missing_from = getattr(gap_res, "scalar_one_or_none", lambda: None)()
+            if not isinstance(missing_from, date):
+                missing_from = None
+
             overlap = timedelta(days=getattr(settings, "YF_REFETCH_DAYS", 7))
-            if last_date is None:
+            fetch_start: date | None = None
+
+            if first_date is None:
                 fetch_start = seg_from
+            elif first_date > seg_from:
+                fetch_start = seg_from
+            elif missing_from is not None:
+                fetch_start = max(seg_from, missing_from - overlap)
+            elif last_date is None or last_date < seg_to:
+                base = seg_from if last_date is None else max(seg_from, last_date - overlap)
+                fetch_start = base
             else:
-                fetch_start = max(seg_from, last_date - overlap)
+                fetch_start = None
+
+            if fetch_start is None or fetch_start > seg_to:
+                continue
+
             df = fetcher.fetch_prices(actual, fetch_start, seg_to, settings=settings)
             rows = upsert.df_to_rows(df, symbol=actual, source="yfinance")
             if rows:

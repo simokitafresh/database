@@ -8,14 +8,43 @@ from app.api.deps import get_session
 from app.core.config import settings
 
 
-def _setup_session(rows: list) -> AsyncMock:
-    session = AsyncMock()
-    result = MagicMock()
-    result.fetchall.return_value = rows
-    session.execute.return_value = result
-    conn = AsyncMock()
-    session.connection.return_value = conn
-    return session
+def _setup_session(rows: list):
+    class _MapWrap:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def first(self):
+            return self._rows[0] if self._rows else None
+
+    class FakeResult:
+        def __init__(self, rows=None, scalar=None):
+            self._rows = rows or []
+            self._scalar = scalar
+
+        def mappings(self):
+            return _MapWrap(self._rows)
+
+        def scalar_one_or_none(self):
+            return self._scalar
+
+        def fetchall(self):
+            return self._rows
+
+    class FakeSession(AsyncMock):
+        async def execute(self, sql, params=None):
+            s = str(sql)
+            if "min(date) AS first_date" in s:
+                return FakeResult(rows=[{"first_date": None, "last_date": None, "n_rows": 0}])
+            if "LEAD(date)" in s:
+                return FakeResult(scalar=None)
+            if "get_prices_resolved" in s:
+                return FakeResult(rows=rows)
+            return FakeResult()
+
+        async def connection(self):
+            return AsyncMock()
+
+    return FakeSession()
 
 
 def test_too_many_symbols(monkeypatch):

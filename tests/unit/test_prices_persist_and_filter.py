@@ -29,12 +29,16 @@ def test_prices_commits_and_filters(mocker):
         def __init__(self, rows):
             self._rows = rows
 
+        def first(self):
+            return self._rows[0] if self._rows else None
+
         def all(self):
             return self._rows
 
     class FakeResult:
-        def __init__(self, rows=None):
+        def __init__(self, rows=None, scalar=None):
             self._rows = rows or []
+            self._scalar = scalar
 
         def fetchall(self):
             return self._rows
@@ -42,10 +46,17 @@ def test_prices_commits_and_filters(mocker):
         def mappings(self):
             return _MapWrap(self._rows)
 
+        def scalar_one_or_none(self):
+            return self._scalar
+
     class FakeSession:
         async def execute(self, sql, params=None):
             s = str(sql)
             calls["queries"].append(s)
+            if "min(date) AS first_date" in s:
+                return FakeResult(rows=[{"first_date": None, "last_date": None, "n_rows": 0}])
+            if "LEAD(date)" in s:
+                return FakeResult(scalar=None)
             if "get_prices_resolved" in s:
                 rows = [
                     {
@@ -68,7 +79,7 @@ def test_prices_commits_and_filters(mocker):
             calls["committed"] = True
 
         async def connection(self):
-             return AsyncMock()
+            return AsyncMock()
 
     from app.api.deps import get_session as real_dep
 

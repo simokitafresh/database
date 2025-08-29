@@ -14,6 +14,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from app.api.deps import get_session
 from app.api.errors import raise_http_error
@@ -67,6 +68,7 @@ async def get_prices(
     start: date = from_
     end: date = to
 
+    did_upsert = False
     for sym in symbol_list:
         segments = resolver.segments_for(sym, start, end, [])
         for actual, seg_from, seg_to in segments:
@@ -75,11 +77,25 @@ async def get_prices(
             if rows:
                 sql = upsert.upsert_prices_sql()
                 await session.execute(sql, rows)
+                did_upsert = True
 
-    result = await session.execute(
-        "SELECT symbol, date, open, high, low, close, volume, source, "
-        "last_updated, source_symbol FROM prices"
-    )
+    # Persist fetched rows when autocommit is disabled
+    if did_upsert:
+        await session.commit()
+
+    if not symbol_list:
+        return []
+    params = {"from": start, "to": end}
+    parts: list[str] = []
+    for i, sym in enumerate(symbol_list):
+        key = f"sym{i}"
+        parts.append(
+            "SELECT symbol, date, open, high, low, close, volume, source, last_updated, source_symbol "
+            f"FROM get_prices_resolved(:{key}, :from, :to)"
+        )
+        params[key] = sym
+    sql = " UNION ALL ".join(parts) + " ORDER BY symbol, date"
+    result = await session.execute(text(sql), params)
     rows_list: List[object] = list(result.fetchall())
 
     if len(rows_list) > settings.API_MAX_ROWS:
@@ -91,4 +107,3 @@ async def get_prices(
 
 
 __all__ = ["router", "get_prices"]
-

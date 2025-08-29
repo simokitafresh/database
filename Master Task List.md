@@ -210,11 +210,11 @@ tasks:
   acceptance_criteria:
     - "無効な日付レンジは ValidationError"
     - "PriceRowOut.date は date 型、last_updated は datetime(timezone) 型"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-06"
+  end: "2025-09-06"
+  notes: "Pydantic schemas implemented"
 
 - id: T041
   title: api.deps（依存注入）

@@ -350,11 +350,11 @@ tasks:
   description: エラーJSONの統一
   acceptance_criteria:
     - "レスポンス: {error:{code:string, message:string}} 形状"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-14"
+  end: "2025-09-14"
+  notes: "Implemented unified error handlers and tests"
 
 - id: T061
   title: /healthz 実装

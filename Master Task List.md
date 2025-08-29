@@ -297,11 +297,11 @@ tasks:
   acceptance_criteria:
     - "生成SQLに ON CONFLICT (symbol, date) DO UPDATE を含む"
     - "dfのNaNは除去/丸め方針を明確化（テストで確認）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-11"
+  end: "2025-09-11"
+  notes: "Prepared upsert SQL and row conversion helpers"
 
 - id: T054
   title: services.fetcher（yfinance取得・N日リフレッチ・バックオフ）

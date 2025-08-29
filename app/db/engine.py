@@ -24,7 +24,7 @@ def create_engine_and_sessionmaker(
         Tuple of async engine and sessionmaker.
     """
 
-    engine = create_async_engine(database_url, future=True)
+    engine = create_async_engine(database_url)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     return engine, session_factory
 

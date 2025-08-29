@@ -677,8 +677,8 @@ tasks:
   description: PR時にユニットテストを回す定義（実行は不要）
   acceptance_criteria:
     - "yml内に 'pytest -q' が含まれる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-10-03"
+  end: "2025-10-03"
+  notes: "Added CI workflow with pytest"

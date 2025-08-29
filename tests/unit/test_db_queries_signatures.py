@@ -1,5 +1,5 @@
-from datetime import date
 import inspect
+from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,11 +10,20 @@ from app.db import queries
 @pytest.mark.asyncio
 async def test_get_prices_resolved_signature_and_sql():
     sig = inspect.signature(queries.get_prices_resolved)
-    assert list(sig.parameters) == ["session", "symbol", "from_", "to"]
+    assert list(sig.parameters) == ["session", "symbols", "date_from", "date_to"]
 
     session = AsyncMock()
-    session.execute.return_value.fetchall.return_value = []
-    await queries.get_prices_resolved(session, "AAA", date(2024, 1, 1), date(2024, 1, 2))
+
+    class DummyRes:
+        def mappings(self):
+            class M:
+                def all(self_inner):
+                    return []
+
+            return M()
+
+    session.execute.return_value = DummyRes()
+    await queries.get_prices_resolved(session, ["AAA"], date(2024, 1, 1), date(2024, 1, 2))
     executed_sql = session.execute.call_args[0][0].text
     assert "get_prices_resolved" in executed_sql
 

@@ -366,13 +366,11 @@ PR#4: 欠損検出（LEAD）& 直近 N 日リフレッシュ
 
 ToDo（コミット粒度）
 
-1. feat(queries): add ensure_coverage() and get_prices_resolved()
+1. feat(queries): add ensure_coverage() and get_prices_resolved() ✅
 
+2. feat(resolver): helper for date segments (1-hop symbol change) ✅
 
-2. feat(resolver): helper for date segments (1-hop symbol change)
-
-
-3. test(queries): gap detection and refetch boundary
+3. test(queries): gap detection and refetch boundary ✅
 
 
 

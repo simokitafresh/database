@@ -661,11 +661,11 @@ tasks:
   description: メトリクスの契約テスト
   acceptance_criteria:
     - "cagr/stdev/max_drawdown/n_days が存在し型が数値"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-10-02"
+  end: "2025-10-02"
+  notes: "metrics endpoint E2E test"
 
 # ========= 16. CI（コードのみ） =========
 - id: T160

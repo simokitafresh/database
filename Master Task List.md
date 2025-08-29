@@ -559,11 +559,11 @@ tasks:
   description: Render設定（コードのみ）
   acceptance_criteria:
     - "healthCheckPath: /healthz が含まれる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-26"
+  end: "2025-09-26"
+  notes: "Render config with health check"
 
 # ========= 12. API バリデーション強化 =========
 - id: T120

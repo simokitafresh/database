@@ -33,7 +33,8 @@ init_error_handlers(app)
 app.add_middleware(RequestIDMiddleware)
 cors = create_cors_middleware(settings)
 if cors:
-    app.add_middleware(*cors)
+    Middleware, options = cors
+    app.add_middleware(Middleware, **options)
 
 app.include_router(health_router)
 app.include_router(v1_router)

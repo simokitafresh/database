@@ -529,11 +529,11 @@ tasks:
   description: デプロイ用のコードファイル
   acceptance_criteria:
     - "ファイルが存在し、CMD/ENTRYPOINTの文字列が期待どおり（文字列検証）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-24"
+  end: "2025-09-24"
+  notes: "Added Dockerfile and entrypoint script"
 
 - id: T111
   title: docker-compose.yml（開発用）

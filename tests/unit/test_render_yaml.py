@@ -12,4 +12,3 @@ def test_render_yaml_has_healthcheck_and_start_command():
     assert service["startCommand"] == "./docker/entrypoint.sh"
     assert service["env"] == "docker"
     assert service["type"] == "web"
-

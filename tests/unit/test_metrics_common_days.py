@@ -43,4 +43,3 @@ def test_empty_or_single_day_results_are_safe():
         assert r["cagr"] == 0.0
         assert r["stdev"] == 0.0
         assert r["max_drawdown"] == 0.0
-

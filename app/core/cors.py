@@ -40,15 +40,19 @@ def create_cors_middleware(settings: Settings) -> Optional[MiddlewareConfig]:
 
     if wildcard_only or wildcard_included:
         # Starlette does not allow allow_credentials=True with wildcard
-        kwargs.update({
-            "allow_origin_regex": ".*",
-            "allow_credentials": False,
-        })
+        kwargs.update(
+            {
+                "allow_origin_regex": ".*",
+                "allow_credentials": False,
+            }
+        )
     else:
-        kwargs.update({
-            "allow_origins": origins,
-            "allow_credentials": True,
-        })
+        kwargs.update(
+            {
+                "allow_origins": origins,
+                "allow_credentials": True,
+            }
+        )
 
     return CORSMiddleware, kwargs
 

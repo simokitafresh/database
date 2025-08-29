@@ -1,4 +1,3 @@
-
 from app.services.normalize import normalize_symbol
 
 

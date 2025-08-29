@@ -49,9 +49,7 @@ def test_retry_succeeds_within_limit(mocker):
 
 def test_retry_exceeds_limit_raises(mocker):
     settings = Settings(FETCH_MAX_RETRIES=2, FETCH_BACKOFF_MAX_SECONDS=2)
-    download = mocker.patch(
-        "app.services.fetcher.yf.download", side_effect=TimeoutError("boom")
-    )
+    download = mocker.patch("app.services.fetcher.yf.download", side_effect=TimeoutError("boom"))
     sleep = mocker.patch("app.services.fetcher.time.sleep")
 
     with pytest.raises(TimeoutError):

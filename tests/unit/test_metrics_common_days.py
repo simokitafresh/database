@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 
 from app.services.metrics import compute_metrics
@@ -26,9 +27,9 @@ def test_common_trading_days_intersection_applied():
     assert by_symbol["BBB"]["n_days"] == 2
 
     # Ensure metrics are numeric and not NaN
-    assert isinstance(by_symbol["AAA"]["cagr"], float)
-    assert isinstance(by_symbol["AAA"]["stdev"], float)
-    assert isinstance(by_symbol["AAA"]["max_drawdown"], float)
+    for key in ("cagr", "stdev", "max_drawdown"):
+        assert isinstance(by_symbol["AAA"][key], float)
+        assert not math.isnan(by_symbol["AAA"][key])
 
 
 def test_empty_or_single_day_results_are_safe():

@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.errors import init_error_handlers
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -21,6 +23,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+init_error_handlers(app)
 
 
 @app.get("/healthz")

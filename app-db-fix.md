@@ -75,7 +75,7 @@ P0: ビルド/起動を止める致命傷の除去
 
 ID	タイトル	問題/目的	完了条件(DoD)	検証(テスト/実行例)	変更ファイル（目安）	Owner	Status
 
-P0-1	future=True削除	SQLAlchemy 2.0で不正引数	create_engine_and_sessionmakerがcreate_async_engine(database_url)で初期化できる	python - <<'PY'\nfrom app.db.engine import create_engine_and_sessionmaker;print('ok')\nPY が例外なく走る（モックでOK）	app/db/engine.py（future=True削除） 		☐
+P0-1	future=True削除	SQLAlchemy 2.0で不正引数	create_engine_and_sessionmakerがcreate_async_engine(database_url)で初期化できる	python - <<'PY'\nfrom app.db.engine import create_engine_and_sessionmaker;print('ok')\nPY が例外なく走る（モックでOK）	app/db/engine.py（future=True削除） 	LLM   ✅
 P0-2	AlembicをPG URLに統一	SQLite設定のままだとPG前提のSQLが全滅	alembic.iniのsqlalchemy.urlがpostgresql+psycopg://...に更新。env.pyで環境変数ALEMBIC_SQLALCHEMY_URLが優先される	ALEMBIC_SQLALCHEMY_URL=postgresql+psycopg://... alembic current が動作	alembic.ini, app/migrations/env.py（URL取得を環境変数優先に） 		☐
 P0-3	now()をPG互換に固定	SQLite非互換を排除	server_default=text("now()") などPG向け明示にし、Alembic生成/適用が通る	alembic revision --autogenerate → alembic upgrade head がPGで成功	app/db/models.py（last_updated定義の見直し） 		☐
 

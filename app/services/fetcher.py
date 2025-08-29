@@ -6,6 +6,7 @@ from typing import Optional
 from urllib.error import HTTPError
 
 import pandas as pd
+import requests
 import yfinance as yf
 
 from app.core.config import Settings
@@ -77,8 +78,19 @@ def fetch_prices(
         except (
             HTTPError,
             TimeoutError,
+            requests.exceptions.Timeout,
+            requests.exceptions.ReadTimeout,
+            requests.exceptions.ConnectTimeout,
         ) as exc:  # pragma: no cover - branch executed in tests
-            retryable = isinstance(exc, TimeoutError) or getattr(exc, "code", None) in {
+            retryable = isinstance(
+                exc,
+                (
+                    TimeoutError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ReadTimeout,
+                    requests.exceptions.ConnectTimeout,
+                ),
+            ) or getattr(exc, "code", None) in {
                 429,
                 999,
             }

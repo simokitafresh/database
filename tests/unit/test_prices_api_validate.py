@@ -134,7 +134,6 @@ def test_service_call_order(monkeypatch, mocker):
         "normalize",
         "resolver",
         "lock",
-        "resolver",
         "fetcher",
         "upsert",
     ]

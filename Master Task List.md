@@ -260,11 +260,11 @@ tasks:
   description: API/取得双方で使う区間分割ロジック（DB不要で純粋関数）
   acceptance_criteria:
     - "change_date当日以降を新、前日までを旧と判定"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-09"
+  end: "2025-09-09"
+  notes: "1-hop resolver implemented"
 
 - id: T052
   title: services.metrics（CAGR/STDEV/MaxDD）

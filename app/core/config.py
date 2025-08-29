@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     YF_REFETCH_DAYS: int = 30
     YF_REQ_CONCURRENCY: int = 4
     FETCH_TIMEOUT_SECONDS: int = 8
+    FETCH_MAX_RETRIES: int = 3
+    FETCH_BACKOFF_MAX_SECONDS: float = 8.0
     REQUEST_TIMEOUT_SECONDS: int = 15
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"

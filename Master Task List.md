@@ -612,11 +612,11 @@ tasks:
   description: 競合/冪等のフロー
   acceptance_criteria:
     - "2リクエストで fetcher が一度だけ呼ばれる"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-29"
+  end: "2025-09-29"
+  notes: "Added advisory lock recheck flow and fetcher call suppression test"
 
 # ========= 14. 例外/タイムアウト =========
 - id: T140

@@ -13,6 +13,8 @@ def _setup_session(rows: list) -> AsyncMock:
     result = MagicMock()
     result.fetchall.return_value = rows
     session.execute.return_value = result
+    conn = AsyncMock()
+    session.connection.return_value = conn
     return session
 
 

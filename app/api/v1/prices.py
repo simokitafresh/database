@@ -16,6 +16,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
+from app.db.utils import advisory_lock
+
 from app.api.deps import get_session
 from app.api.errors import raise_http_error
 from app.core.config import settings
@@ -70,6 +72,11 @@ async def get_prices(
 
     did_upsert = False
     for sym in symbol_list:
+        pre_segments = resolver.segments_for(sym, start, end, [])
+        if not pre_segments:
+            continue
+        conn = await session.connection()
+        await advisory_lock(conn, sym)
         segments = resolver.segments_for(sym, start, end, [])
         for actual, seg_from, seg_to in segments:
             df = fetcher.fetch_prices(actual, seg_from, seg_to, settings=settings)

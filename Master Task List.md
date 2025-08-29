@@ -332,11 +332,11 @@ tasks:
   description: 競合制御（疑似テスト）
   acceptance_criteria:
     - "hashtext(symbol) を使う SQL が発行されることをモックで確認"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-13"
+  end: "2025-09-13"
+  notes: "Added advisory lock helper and test; updated yfinance to latest"
 
 # ========= 6. API ルータ =========
 - id: T060

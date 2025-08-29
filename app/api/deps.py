@@ -3,27 +3,29 @@ from __future__ import annotations
 """Dependency injection utilities for FastAPI routers."""
 
 from collections.abc import AsyncGenerator
+from functools import lru_cache
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import Settings
-from app.db.engine import create_engine_and_sessionmaker
+from app.core.config import settings
 
-# Initialize engine and session factory at import time using settings
-settings = Settings()
-_engine, SessionLocal = create_engine_and_sessionmaker(settings.DATABASE_URL)
+
+@lru_cache(maxsize=8)
+def _sessionmaker_for(dsn: str) -> async_sessionmaker[AsyncSession]:
+    engine = create_async_engine(dsn, future=True, pool_pre_ping=True)
+    return async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an ``AsyncSession`` for request handlers.
 
-    This function is intended to be used with ``Depends`` in FastAPI routes.
-    It provides a SQLAlchemy ``AsyncSession`` bound to the application's
-    engine and ensures proper cleanup after the request.
+    The sessionmaker is created lazily per DSN and cached so tests or runtime
+    configuration can swap ``settings.DATABASE_URL``.
     """
 
+    SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
     async with SessionLocal() as session:
         yield session
 
 
-__all__ = ["get_session", "SessionLocal"]
+__all__ = ["get_session", "_sessionmaker_for"]

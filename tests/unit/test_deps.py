@@ -12,7 +12,13 @@ from app.api import deps
 async def test_get_session_dependency(monkeypatch):
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(deps, "SessionLocal", session_factory)
+
+    def fake_sessionmaker_for(dsn: str):  # pragma: no cover - assertion ensures call
+        assert dsn == "sqlite+aiosqlite:///:memory:"
+        return session_factory
+
+    monkeypatch.setattr(deps, "_sessionmaker_for", fake_sessionmaker_for)
+    monkeypatch.setattr(deps.settings, "DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
     app = FastAPI()
 

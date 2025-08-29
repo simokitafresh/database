@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +13,7 @@ def test_date_range_invalid_order_raises():
 
 
 def test_price_row_out_enforces_types():
-    aware = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    aware = datetime(2024, 1, 1, tzinfo=timezone(timedelta(hours=9)))
     row = PriceRowOut(
         symbol="AAA",
         date=date(2024, 1, 1),
@@ -26,7 +26,7 @@ def test_price_row_out_enforces_types():
         last_updated=aware,
     )
     assert isinstance(row.date, date)
-    assert row.last_updated.tzinfo is not None
+    assert row.last_updated.tzinfo == timezone.utc
 
     with pytest.raises(ValidationError):
         PriceRowOut(

@@ -1,30 +1,32 @@
 from __future__ import annotations
+from datetime import datetime, timezone
+from typing import Optional
 
-from datetime import date, datetime
-
-from pydantic import BaseModel, Field, field_validator
+try:
+    # Pydantic v2
+    from pydantic import BaseModel, Field, field_validator
+except Exception:  # v1 fallback
+    from pydantic import BaseModel, Field, validator as field_validator  # type: ignore
 
 
 class PriceRowOut(BaseModel):
-    """Output schema for a price row."""
-
     symbol: str
-    date: date
+    date: datetime | str  # ISO 日付文字列も許容（FastAPI の JSON エンコーダ対応）
     open: float
     high: float
     low: float
     close: float
     volume: int
     source: str
-    last_updated: datetime = Field(..., description="Timezone-aware timestamp")
-    source_symbol: str | None = None
+    last_updated: datetime = Field(..., description="Timezone-aware UTC timestamp")
+    source_symbol: Optional[str] = None
 
     @field_validator("last_updated")
     @classmethod
-    def _ensure_tz(cls, v: datetime) -> datetime:
+    def _tz_aware_utc(cls, v: datetime) -> datetime:
         if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
             raise ValueError("last_updated must be timezone-aware")
-        return v
+        return v.astimezone(timezone.utc)
 
 
 __all__ = ["PriceRowOut"]

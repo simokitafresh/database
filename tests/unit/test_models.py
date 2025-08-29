@@ -16,11 +16,10 @@ def test_prices_table_ddl_contains_constraints():
     assert "PRIMARY KEY (symbol, date)" in ddl
     assert "FOREIGN KEY" in ddl and "REFERENCES symbols (symbol)" in ddl
     assert "ON UPDATE CASCADE" in ddl and "ON DELETE RESTRICT" in ddl
-    assert (
-        "CHECK (high >= low AND high >= open AND high >= close AND low <= open AND low <= close)"
-        in ddl
-    )
+    assert "CHECK (low <= LEAST(open, close))" in ddl
+    assert "CHECK (GREATEST(open, close) <= high)" in ddl
     assert "CHECK (open > 0 AND high > 0 AND low > 0 AND close > 0)" in ddl
+    assert "CHECK (volume >= 0)" in ddl
     assert isinstance(models.Price.__table__.c.volume.type, sa.BigInteger)
     assert models.Price.__table__.c.last_updated.type.timezone is True
 

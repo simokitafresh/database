@@ -1,4 +1,6 @@
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.cors import create_cors_middleware
@@ -27,3 +29,20 @@ def test_cors_middleware_wildcard_disables_credentials_and_uses_regex():
     assert cls is CORSMiddleware
     assert options["allow_origin_regex"] == ".*"
     assert options["allow_credentials"] is False
+
+
+def test_cors_basic_flow_allows_origin_without_credentials():
+    app = FastAPI()
+    cls, kwargs = create_cors_middleware(Settings(CORS_ALLOW_ORIGINS="*"))
+    app.add_middleware(cls, **kwargs)
+
+    @app.get("/healthz")
+    def _healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    origin = "https://example.com"
+    resp = client.get("/healthz", headers={"Origin": origin})
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == origin
+    assert "access-control-allow-credentials" not in resp.headers

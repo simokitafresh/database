@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, timedelta
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Mapping, Optional, Sequence, cast
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,7 +86,7 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
         """
     )
     res = await session.execute(sql.bindparams(symbol=symbol, date_from=date_from, date_to=date_to))
-    row = res.mappings().first() or {}
+    row = cast(Mapping[str, Any], res.mappings().first() or {})
     return dict(row)
 
 
@@ -107,51 +107,40 @@ async def ensure_coverage(
 
     for symbol in symbols:
         async with session.begin():
-            await advisory_lock(session, symbol)
+            await advisory_lock(session, symbol)  # type: ignore[arg-type]
 
-            cov = await _get_coverage(session, symbol, date_from, date_to)
+        cov = await _get_coverage(session, symbol, date_from, date_to)
 
-            last_date: Optional[date] = cov.get("last_date")
-            first_date: Optional[date] = cov.get("first_date")
-            has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
-            first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
+        last_date: Optional[date] = cov.get("last_date")
+        first_date: Optional[date] = cov.get("first_date")
+        has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
+        first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
 
-            if last_date:
-                c1 = max(date_from, last_date - timedelta(days=refetch_days))
+        if last_date:
+            c1 = max(date_from, last_date - timedelta(days=refetch_days))
+        else:
+            c1 = date_from
+
+        if has_gaps:
+            if first_missing_weekday:
+                c2 = max(date_from, first_missing_weekday)
             else:
-                c1 = date_from
+                c2 = date_from
+        else:
+            c2 = None
 
-            if has_gaps:
-                if first_missing_weekday:
-                    c2 = max(date_from, first_missing_weekday)
-                else:
-                    c2 = date_from
-            else:
-                c2 = None
+        c3 = date_from if (first_date and first_date > date_from) else None
 
-            c3 = date_from if (first_date and first_date > date_from) else None
+        start = min([c for c in (c1, c2, c3) if c is not None])
 
-            start = min([c for c in (c1, c2, c3) if c is not None])
-
-            df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
-            if df is None or df.empty:
-                continue
-            rows = df_to_rows(df, symbol=symbol, source="yfinance")
-            if not rows:
-                continue
-            up_sql = upsert_prices_sql()
-            keys = [
-                "symbol",
-                "date",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "source",
-            ]
-            params = [dict(zip(keys, r)) for r in rows]
-            await session.execute(text(up_sql), params)
+        df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
+        if df is None or df.empty:
+            continue
+        rows = df_to_rows(df, symbol=symbol, source="yfinance")
+        if not rows:
+            continue
+        up_sql = text(upsert_prices_sql())
+        await session.execute(up_sql, rows)
 
 
 async def get_prices_resolved(

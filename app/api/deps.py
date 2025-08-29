@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Dependency injection utilities for FastAPI routers."""
+
+from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from functools import lru_cache

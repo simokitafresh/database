@@ -1,6 +1,7 @@
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import Settings
 from app.core.cors import create_cors_middleware
-from fastapi.middleware.cors import CORSMiddleware
 
 
 def test_cors_middleware_disabled_when_origins_empty():

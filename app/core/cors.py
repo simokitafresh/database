@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import Settings
 
-
 MiddlewareConfig = Tuple[Type[CORSMiddleware], Dict[str, Any]]
 
 

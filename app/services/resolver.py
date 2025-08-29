@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Iterable, List, Tuple, Any
+from typing import Any, Iterable, List, Tuple
 
 
 def _get(row: Any, key: str):

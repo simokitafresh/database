@@ -13,6 +13,12 @@
    make test
    ```
 
+### マイグレーションの実行
+
+Alembic は環境変数 `ALEMBIC_DATABASE_URL` もしくは `DATABASE_URL` を参照して
+Postgres に接続します。Docker 環境ではエントリポイントがこれらの変数から
+URL を解決し、`alembic upgrade head` を実行します。
+
 ## テスト方針
 
 - **テストはネットワークモック** を用いて行い、外部への実通信は発生させません。

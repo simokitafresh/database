@@ -115,11 +115,11 @@ tasks:
   description: 非同期SQLAlchemyエンジン/セッション生成
   acceptance_criteria:
     - "pytestで engine/urlスキーム(postgresql+asyncpg) を検証（接続は不要）"
-  status: ""
-  owner: ""
-  start: ""
-  end: ""
-  notes: ""
+  status: "done"
+  owner: "assistant"
+  start: "2025-09-01"
+  end: "2025-09-01"
+  notes: "Async engine factory implemented"
 
 - id: T021
   title: db.models 定義（symbols, symbol_changes, prices）

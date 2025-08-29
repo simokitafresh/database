@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 try:
@@ -11,7 +11,8 @@ except Exception:  # v1 fallback
 
 class PriceRowOut(BaseModel):
     symbol: str
-    date: datetime | str  # ISO 日付文字列も許容（FastAPI の JSON エンコーダ対応）
+    # Contract: date-only (YYYY-MM-DD). PydanticはISO文字列を自動でdateに変換します。
+    date: date
     open: float
     high: float
     low: float
@@ -24,6 +25,7 @@ class PriceRowOut(BaseModel):
     @field_validator("last_updated")
     @classmethod
     def _tz_aware_utc(cls, v: datetime) -> datetime:
+        # timezone-aware を必須化し、常に UTC に正規化
         if v.tzinfo is None or v.tzinfo.utcoffset(v) is None:
             raise ValueError("last_updated must be timezone-aware")
         return v.astimezone(timezone.utc)

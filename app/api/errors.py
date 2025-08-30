@@ -32,10 +32,10 @@ def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JS
 
 def init_error_handlers(app: FastAPI) -> None:
     """Register exception handlers on the given FastAPI app."""
-    app.add_exception_handler(HTTPException, _http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(HTTPException, _http_exception_handler)
     app.add_exception_handler(RequestValidationError, cast(Any, _validation_exception_handler))
 
     async def _not_found(request: Request, exc: HTTPException):
         return _http_exception_handler(request, exc)
 
-    app.add_exception_handler(404, _not_found)  # type: ignore[arg-type]
+    app.add_exception_handler(404, _not_found)

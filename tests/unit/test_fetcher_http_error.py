@@ -1,7 +1,8 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 import requests
-from datetime import date
 
 from app.core.config import Settings
 from app.services import fetcher

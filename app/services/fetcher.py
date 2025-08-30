@@ -7,8 +7,8 @@ from urllib.error import HTTPError as URLlibHTTPError
 
 import pandas as pd
 import requests
-from requests.exceptions import HTTPError as RequestsHTTPError
 import yfinance as yf
+from requests.exceptions import HTTPError as RequestsHTTPError
 
 from app.core.config import Settings
 

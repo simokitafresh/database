@@ -15,7 +15,7 @@ line-length = 100
 target-version = "py311"
 select = ["E", "F", "I"]
 ignore = []
-exclude = ["build", "dist", ".venv"]
+exclude = ["build", "dist", ".venv", ".git"]
 
 [tool.mypy]
 python_version = "3.11"

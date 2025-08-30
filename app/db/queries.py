@@ -28,9 +28,7 @@ async def fetch_prices_df(symbol: str, start: date, end: date):
     """
 
     async with _fetch_semaphore:
-        return await run_in_threadpool(
-            fetch_prices, symbol, start, end, settings=settings
-        )
+        return await run_in_threadpool(fetch_prices, symbol, start, end, settings=settings)
 
 
 async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, date_to: date) -> dict:
@@ -110,7 +108,7 @@ async def ensure_coverage(
 
     for symbol in symbols:
         async with session.begin():
-            await advisory_lock(session, symbol)  # type: ignore[arg-type]
+            await advisory_lock(session, symbol)
 
         cov = await _get_coverage(session, symbol, date_from, date_to)
 

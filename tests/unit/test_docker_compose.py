@@ -6,5 +6,5 @@ import yaml
 def test_docker_compose_build_context():
     compose = Path("docker-compose.yml")
     assert compose.exists()
-    data = yaml.safe_load(compose.read_text())
+    data = yaml.safe_load(compose.read_text(encoding="utf-8"))
     assert data["services"]["api"]["build"]["context"] == "./"

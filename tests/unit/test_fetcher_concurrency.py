@@ -26,8 +26,6 @@ async def test_fetch_prices_df_respects_concurrency_limit(mocker):
 
     async with anyio.create_task_group() as tg:
         for _ in range(5):
-            tg.start_soon(
-                queries.fetch_prices_df, "AAPL", date(2024, 1, 1), date(2024, 1, 2)
-            )
+            tg.start_soon(queries.fetch_prices_df, "AAPL", date(2024, 1, 1), date(2024, 1, 2))
 
     assert max_running <= 2

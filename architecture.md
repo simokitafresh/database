@@ -1,5 +1,6 @@
 以下は、あなたのMVP（調整済OHLCV＋汎用データ提供API）を前提にした全体アーキテクチャと、実運用を意識したファイル／フォルダ構成のリファレンスです。
 MVPの非機能要件（同期オンデマンド取得・将来拡張容易・Render+Supabase・Alembic導入・1ホップのシンボル変更透過解決・直近N日リフレッチ）を織り込んでいます。
+エージェントベースの開発フロー（Planner/Coder/Tester/Reviewer）を [`AGENTS.md`](AGENTS.md) に準拠し、仕様の正本としてこの文書を優先してください。
 
 
 ---
@@ -20,6 +21,8 @@ Alembic：スキーマ／関数のマイグレーション管理。
 
 Docker：ポータブルな実行環境。Renderにそのまま配置。
 
+エージェントフロー：開発を [`AGENTS.md`](AGENTS.md) のPlanner/Coder/Tester/Reviewerで推進。外部I/Oはモック、DBはコードのみでテスト。
+
 
 1.2 依存関係（論理図）
 
@@ -30,6 +33,7 @@ graph LR
   API -->|Alembic upgrade| PG
   CLI[管理CLI] -->|Admin ops| API
   CLI -->|SQL| PG
+  Agents[Agents (Planner/Coder/Tester/Reviewer)] -->|Spec Update| Docs[architecture.md / AGENTS.md]
 
 1.3 リクエストフロー（不足時のオンデマンド取得）
 
@@ -61,6 +65,8 @@ sequenceDiagram
 アドバイザリロック：同一シンボルの初回取得競合をDB側で防止。
 
 完全同期：キューやジョブワーカー無し（MVP方針）。
+
+エージェント準拠：実装は最小差分でPR作成、テストは外部I/Oモック（例: [`tests/unit/test_prices_upsert_call.py`](tests/unit/test_prices_upsert_call.py)）。
 
 
 
@@ -126,7 +132,7 @@ repo-root/
 │  │  └─ versions/
 │  │     ├─ 001_init.py            # 3テーブル + 制約 + インデックス
 │  │     ├─ 002_fn_prices_resolved.py # get_prices_resolved 関数
-│  │     └─ 003_tweaks.py          # 追加CHECK/UNIQUE等
+│  │     └─ 003_add_price_checks.py # 追加CHECK制約（例: OHLC値域チェック）
 │  ├─ management/                  # 管理CLI（Typer）
 │  │  ├─ cli.py                    # entry: python -m app.management.cli
 │  │  └─ commands/
@@ -138,7 +144,8 @@ repo-root/
 │     ├─ unit/
 │     │  ├─ test_normalize.py
 │     │  ├─ test_metrics.py
-│     │  └─ test_resolver.py
+│     │  ├─ test_resolver.py
+│     │  └─ test_prices_upsert_call.py # UPSERTトリガーテスト例
 │     ├─ integration/
 │     │  ├─ test_on_demand_fetch.py # 初回取得→N日重ね→UPSERT冪等
 │     │  └─ test_symbol_change.py
@@ -178,7 +185,7 @@ settings = Settings()
 
 prices(symbol,date) 複合PK（別途の同一組インデックスは不要）。
 
-型と制約（volume BIGINT NOT NULL、last_updated TIMESTAMPTZ DEFAULT now()、CHECK）。
+型と制約（volume BIGINT NOT NULL、last_updated TIMESTAMPTZ DEFAULT now()、CHECK）。[`003_add_price_checks.py`](app/migrations/versions/003_add_price_checks.py) で追加CHECK制約（OHLC値域、ボリューム非負）。
 
 FK：prices.symbol → symbols(symbol)（ON UPDATE CASCADE ON DELETE RESTRICT）。
 
@@ -302,7 +309,8 @@ CREATE TABLE prices (
   last_updated  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (symbol, date),
   CHECK (high >= low AND high >= open AND high >= close AND low <= open AND low <= close),
-  CHECK (open>0 AND high>0 AND low>0 AND close>0)
+  CHECK (open>0 AND high>0 AND low>0 AND close>0),
+  CHECK (volume >= 0)  -- 追加CHECK（003マイグレーション）
 );
 
 CREATE INDEX idx_symbol_changes_old ON symbol_changes(old_symbol);
@@ -397,7 +405,6 @@ services:
 Renderのメトリクス＋将来はOpenTelemetry導入余地。
 
 
-
 ---
 
 8. テスト戦略
@@ -413,18 +420,19 @@ Renderのメトリクス＋将来はOpenTelemetry導入余地。
 
 結合：
 
-初回取得→直近N日重ね→UPSERTの冪等性
+初回取得→直近N日重ね→UPSERTの冪等性（[`tests/unit/test_prices_upsert_call.py`](tests/unit/test_prices_upsert_call.py) 参照）
 
 429時のバックオフ挙動
 
 
 E2E：
 
-/v1/prices 上限行ガード・404/422/413系
+/v1/prices 上限行ガード・404/422/413系（[`tests/e2e/test_prices_endpoint.py`](tests/e2e/test_prices_endpoint.py) 参照）
 
 
 テストDB：docker-compose.yml で postgres:16 を起動。alembic upgrade head を自動適用。
 
+外部I/Oモック必須：[`AGENTS.md`](AGENTS.md) のテスト原則に従い、yfinance/DB接続をモック。
 
 
 ---
@@ -438,7 +446,6 @@ CORS：許可オリジンを明示列挙。
 タイムアウト：外部取得8s／全体15s（環境変数化）。
 
 SLO（MVP）：コールド取得時 5–15秒／DBヒット時 < 200ms 目安。
-
 
 
 ---
@@ -493,7 +500,7 @@ def compute_metrics(price_map: dict[str, pd.DataFrame]) -> list[dict]:
 1. 雛形生成：上記フォルダでFastAPI・SQLAlchemy・Alembic初期化
 
 
-2. DDL実装（001/002）：テーブルと get_prices_resolved
+2. DDL実装（001/002/003）：テーブル、関数、追加CHECK制約
 
 
 3. /healthz→/symbols→/prices の順で実装（行上限制御・CORS調整）
@@ -510,7 +517,7 @@ def compute_metrics(price_map: dict[str, pd.DataFrame]) -> list[dict]:
 
 7. Docker化→Render/Supabase投入（起動時 alembic upgrade head）
 
-
+エージェントフロー：[`AGENTS.md`](AGENTS.md) のPlannerでタスク特定、Coderで最小実装、Testerでモックテスト、Reviewerで仕様適合確認。
 
 
 ---
@@ -520,5 +527,4 @@ def compute_metrics(price_map: dict[str, pd.DataFrame]) -> list[dict]:
 この構成はMVPのミニマム運用に必要十分かつ、将来の非同期化・キャッシュ・多段シンボル変更へほぼ無痛で拡張できます（resolver を再帰CTE化、キュー導入、Redis追加など）。
 
 実装中に迷いがちなポイント（N日リフレッチ、アドバイザリロック、行上限制御、エラーモデル、TZ/DATE）は専用モジュールに分離しておくと運用コストが下がります。
-
 

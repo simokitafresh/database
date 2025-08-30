@@ -7,7 +7,7 @@ try:
     # Pydantic v2
     from pydantic import BaseModel, Field, field_validator
 except Exception:  # v1 fallback
-    from pydantic import BaseModel, Field  # type: ignore
+    from pydantic import BaseModel, Field
     from pydantic import validator as field_validator
 
 

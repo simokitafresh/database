@@ -3,17 +3,79 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
 
 # Environments
 .env
+.env.local
+.env.*.local
 .venv/
 venv/
+ENV/
+env/
 
 # Testing
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
 
 # Packaging
 build/
 dist/
 *.egg-info/
+.eggs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+docker/.env
+
+# Render
+# (render.yaml はコミット推奨)
+
+# Alembic
+# (migrations/versions/ はコミット推奨)
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Node.js (if any)
+node_modules/
+npm-debug.log*
+
+# Miscellaneous
+*.bak
+*.backup

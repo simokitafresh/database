@@ -528,3 +528,81 @@ def compute_metrics(price_map: dict[str, pd.DataFrame]) -> list[dict]:
 
 実装中に迷いがちなポイント（N日リフレッチ、アドバイザリロック、行上限制御、エラーモデル、TZ/DATE）は専用モジュールに分離しておくと運用コストが下がります。
 
+
+---
+
+付記（実装準拠ノート・運用詳細 2025-08）
+
+本節は既存の設計を補足し、実装・運用上の決定事項を明文化します。原本文書の内容はそのまま有効です。
+
+1. API コントラクトとエラーフォーマット
+- エンドポイント: `/healthz`, `/v1/symbols`, `/v1/prices`, `/v1/metrics`。
+- エラー形状は統一: `{"error": {"code": "<HTTP_STATUS>", "message": "..."}}`。
+  - 422 バリデーション、404 Not Found、413 などを統一ハンドラで返却。
+- 価格レスポンスの `date` は日付（YYYY-MM-DD）、`last_updated` はタイムゾーン付きで常に UTC に正規化。
+
+2. DB スキーマ（DDL を再掲・確定事項）
+- `symbols`
+  - PK: `symbol`。任意のメタ（name/exchange/currency/is_active/first_date/last_date）。
+- `symbol_changes`
+  - PK: `(old_symbol, change_date)`、`UNIQUE(new_symbol)` で 1 ホップを担保。
+- `prices`
+  - PK: `(symbol, date)`、FK: `symbol -> symbols.symbol (ON UPDATE CASCADE, ON DELETE RESTRICT)`。
+  - `volume BIGINT`、`last_updated TIMESTAMPTZ DEFAULT now()`。
+  - CHECK 制約（003 で追加）: 
+    - `ck_prices_low_le_open_close`: `low <= LEAST(open, close)`
+    - `ck_prices_open_close_le_high`: `GREATEST(open, close) <= high`
+    - `ck_prices_positive_ohlc`: `open>0 AND high>0 AND low>0 AND close>0`
+    - `ck_prices_volume_nonneg`: `volume >= 0`
+
+3. シンボル変更の透過解決（1ホップ）
+- `get_prices_resolved(symbol, from, to)` は区間分割で返却。境界は「`date < change_date` が旧、`date >= change_date` が新」。
+- レスポンスは現行シンボル名で統一し、必要に応じて `source_symbol` を各行に含める。
+
+4. オンデマンド取得と再取得（N=30 既定）
+- 不足検知 → 取得 → UPSERT → 最終 SELECT の順。
+- 直近 `N=YF_REFETCH_DAYS` 日は毎回再取得（配当・分割遅延反映対策）。
+- フェッチは yfinance（`auto_adjust=True`）を利用。429/999/各種タイムアウトで指数バックオフ。
+- 取得結果は `open/high/low/close/volume` を必須とし、空/列欠落は安全にスキップ（UPSERTしない）。
+
+5. ロック戦略（競合回避）
+- シンボル単位の排他に PostgreSQL の `pg_advisory_xact_lock(hashtext(symbol))` を使用。
+- 実装では `AsyncConnection` を取得してロックを取得（セッション型の取り違えを避ける）。
+- 長いトランザクションを避けるため、ロックのスコープは最小に保つ。必要に応じて「カバレッジ判定→UPSERT」を同一トランザクションで実施する方針を選択可能。
+
+6. Alembic とドライバ
+- マイグレーション実行時は同期ドライバを使用するため、`postgresql+asyncpg://` を `postgresql+psycopg://` に自動置換して実行。
+- CLI からは `alembic -x db_url=... upgrade head` で明示上書き可能。
+- `context.get_x_argument(as_dictionary=True)` を使用（Alembic 仕様）。
+
+7. CORS / ログ / ミドルウェア
+- CORS: `CORS_ALLOW_ORIGINS` が `*` を含む場合は `allow_origin_regex=.*` とし、資格情報は無効（Starlette の制約に準拠）。
+- ログ: ルートロガーを JSON 形式（`level/name/message`）で出力。
+- ミドルウェア: `X-Request-ID` をヘッダと contextvar に付与。
+
+8. 環境変数とデプロイ
+- ローカル: `.env`（例は `.env.example`）。Render: `.env.render.example` を参照し、実値はダッシュボードで設定。
+- 主要キー: `DATABASE_URL`（asyncpg, アプリ）、`ALEMBIC_DATABASE_URL`（psycopg, Alembic, 未設定時は前者を流用）、`API_MAX_SYMBOLS`、`API_MAX_ROWS`、`YF_REFETCH_DAYS`、`YF_REQ_CONCURRENCY`、`CORS_ALLOW_ORIGINS`、`LOG_LEVEL` 等。
+- Render は `docker/entrypoint.sh` で起動時に `alembic upgrade head` を実行。ヘルスチェックは `/healthz`。
+
+9. メトリクス計算（仕様の明確化）
+- 前処理: シリーズ抽出の優先順 `adj_close` → `close` → `Adj Close`。必要に応じて `date` 列でインデックス化。
+- カレンダー: 全銘柄の共通営業日の交差に合わせて整列。
+- 日次対数リターン: `r_t = ln(P_t / P_{t-1})`。
+- 式:
+  - `CAGR = exp(sum(r) * 252 / N) - 1`
+  - `STDEV = std(r, ddof=1) * sqrt(252)`
+  - `MaxDD` は `exp(cumsum(r))` から算出。非有限は 0 に丸める。
+
+10. テスト方針
+- 外部 I/O は全てモック（yfinance、DB接続、スリープ/バックオフ）。
+- DB 統合はコードのみを対象にし、CI では `pytest` を実行。
+- 代表テスト: エラー形状（404/413/422）、メトリクス式と交差カレンダー、カバレッジ検知と UPSERT 呼び出し、セマフォによる並列制御など。
+
+11. 既知の落とし穴（再掲・対策）
+- `change_date` 当日は新シンボルとして扱う（`<` 旧 / `>=` 新）。
+- `(symbol, date)` PK が BTree を持つため重複索引は不要。
+- `yfinance` のバージョン差で `timeout` 引数が使えない場合がある。必要ならフォールバックで再試行する。
+- CORS の `*` と資格情報は併用不可。
+
+以上の補足は、既存の設計・仕様を変えるものではなく、実装上の解釈のブレを防ぐための明文化です。

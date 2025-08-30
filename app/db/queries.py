@@ -16,7 +16,10 @@ from app.services.fetcher import fetch_prices
 from app.services.upsert import df_to_rows, upsert_prices_sql
 
 # Preserve legacy alias for tests and backward compatibility
-with_symbol_lock = advisory_lock
+async def with_symbol_lock(session: AsyncSession, symbol: str) -> None:
+    """Acquire an advisory lock for the given symbol within a transaction."""
+    conn = await session.connection()
+    await advisory_lock(conn, symbol)
 
 _fetch_semaphore = anyio.Semaphore(settings.YF_REQ_CONCURRENCY)
 
@@ -108,8 +111,7 @@ async def ensure_coverage(
 
     for symbol in symbols:
         async with session.begin():
-            conn = await session.connection()
-            await advisory_lock(conn, symbol)
+            await with_symbol_lock(session, symbol)
 
         cov = await _get_coverage(session, symbol, date_from, date_to)
 

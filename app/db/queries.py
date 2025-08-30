@@ -108,7 +108,8 @@ async def ensure_coverage(
 
     for symbol in symbols:
         async with session.begin():
-            await advisory_lock(session, symbol)
+            conn = await session.connection()
+            await advisory_lock(conn, symbol)
 
         cov = await _get_coverage(session, symbol, date_from, date_to)
 

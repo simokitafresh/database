@@ -83,6 +83,14 @@ def fetch_prices(
             )
             if "adj_close" in df.columns:
                 df = df.drop(columns=["adj_close"])
+
+            # Guard against empty frames or missing required columns
+            if df is None or df.empty:
+                return pd.DataFrame()
+            required_columns = {"open", "high", "low", "close", "volume"}
+            if not required_columns.issubset(df.columns):
+                return pd.DataFrame()
+
             return df
         except (
             URLlibHTTPError,

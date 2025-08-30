@@ -41,6 +41,11 @@ def fetch_prices(
     pandas.DataFrame
         Data frame with columns ``open``, ``high``, ``low``, ``close``,
         ``volume`` and a ``DatetimeIndex``.
+
+    Note
+    ----
+    yfinance's end parameter is exclusive, so we add 1 day internally
+    to ensure the end date is included in the results.
     """
 
     fetch_start = start
@@ -48,6 +53,9 @@ def fetch_prices(
         refetch_start = last_date - timedelta(days=settings.YF_REFETCH_DAYS)
         if refetch_start > fetch_start:
             fetch_start = refetch_start
+
+    # yfinanceのend引数は排他的なので、1日加算して包含的にする
+    fetch_end = end + timedelta(days=1)
 
     attempts = 0
     delay = 1.0
@@ -58,7 +66,7 @@ def fetch_prices(
             df = yf.download(
                 symbol,
                 start=fetch_start,
-                end=end,
+                end=fetch_end,  # 修正: end → fetch_end (yfinanceの排他的仕様に対応)
                 auto_adjust=True,
                 progress=False,
                 timeout=settings.FETCH_TIMEOUT_SECONDS,

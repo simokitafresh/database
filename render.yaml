@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: stock-api
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /healthz
+    startCommand: ./docker/entrypoint.sh
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: API_MAX_SYMBOLS
+        value: "50"
+      - key: API_MAX_ROWS
+        value: "1000000"
+      - key: YF_REFETCH_DAYS
+        value: "30"
+      - key: YF_REQ_CONCURRENCY
+        value: "4"
+      - key: CORS_ALLOW_ORIGINS
+        value: "https://your-frontend.example"

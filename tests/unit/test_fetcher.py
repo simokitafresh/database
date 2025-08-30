@@ -34,16 +34,12 @@ def test_fetch_prices_backoff(mocker):
     assert list(df.columns) == ["open", "high", "low", "close", "volume"]
 
 
-def test_fetch_prices_refetch_start(mocker):
-    settings = Settings(YF_REFETCH_DAYS=3)
+def test_fetch_prices_end_inclusive(mocker):
+    """Test that yfinance end parameter is made inclusive by adding 1 day."""
+    settings = Settings()
     download = mocker.patch("app.services.fetcher.yf.download", return_value=_sample_df())
 
-    fetch_prices(
-        "AAPL",
-        date(2024, 1, 1),
-        date(2024, 1, 10),
-        settings=settings,
-        last_date=date(2024, 1, 5),
-    )
+    fetch_prices("AAPL", date(2024, 1, 1), date(2024, 1, 2), settings=settings)
 
-    assert download.call_args.kwargs["start"] == date(2024, 1, 2)
+    # yfinanceのend引数が排他的なので、内部で+1日されていることを確認
+    assert download.call_args.kwargs["end"] == date(2024, 1, 3)

@@ -21,10 +21,26 @@ except (ModuleNotFoundError, ImportError):
 # Alembic Config オブジェクトは .ini を表す
 config = context.config
 # --- inject DB URL from env (prefer ALEMBIC_DATABASE_URL, fallback to DATABASE_URL) ---
+def _normalize_sync_dsn(url: str) -> str:
+    """Normalize DSN for Alembic (sync driver required).
+
+    - Convert asyncpg DSN to psycopg
+    - Convert plain postgresql scheme to psycopg driver
+    """
+    if not url:
+        return url
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    return url
+
+
 env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
 if env_url:
-    if env_url.startswith("postgresql+asyncpg://"):
-        env_url = env_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    env_url = _normalize_sync_dsn(env_url)
     # Avoid ConfigParser interpolation by escaping % as %%
     env_url_escaped = env_url.replace('%', '%%')
     config.set_main_option("sqlalchemy.url", env_url_escaped)
@@ -55,11 +71,12 @@ def _get_db_url() -> str:
         else:
             url = config.get_main_option("sqlalchemy.url")
 
-    if url.startswith("postgresql+asyncpg://"):
-        url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+    new_url = _normalize_sync_dsn(url)
+    if new_url != url:
         # Avoid ConfigParser interpolation by escaping % as %% when setting option
-        url_escaped = url.replace('%', '%%')
+        url_escaped = new_url.replace('%', '%%')
         config.set_main_option("sqlalchemy.url", url_escaped)
+        url = new_url
 
     return url
 

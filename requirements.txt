@@ -1,12 +1,13 @@
 fastapi==0.111.0
-uvicorn[standard]==0.29.0
-sqlalchemy[asyncio]==2.0.29
-asyncpg==0.29.0
+# Drop extras to reduce optional dependencies
+uvicorn==0.29.0
+sqlalchemy==2.0.36
+
 psycopg[binary]==3.2.*
 alembic==1.13.1
 pydantic-settings==2.0.3
-pandas==2.2.2
-numpy==1.26.4
+pandas==2.2.3
+numpy==2.3.2
 yfinance==0.2.65
 typer==0.16.1
 httpx==0.27.0
@@ -16,4 +17,3 @@ pytest-mock==3.12.0
 pyyaml==6.0.1
 aiosqlite==0.21.0
 trio==0.30.0
-black==24.4.2

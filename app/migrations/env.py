@@ -25,7 +25,9 @@ env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
 if env_url:
     if env_url.startswith("postgresql+asyncpg://"):
         env_url = env_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
-    config.set_main_option("sqlalchemy.url", env_url)
+    # Avoid ConfigParser interpolation by escaping % as %%
+    env_url_escaped = env_url.replace('%', '%%')
+    config.set_main_option("sqlalchemy.url", env_url_escaped)
 
 # ログ設定
 if config.config_file_name is not None:
@@ -55,7 +57,9 @@ def _get_db_url() -> str:
 
     if url.startswith("postgresql+asyncpg://"):
         url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
-        config.set_main_option("sqlalchemy.url", url)
+        # Avoid ConfigParser interpolation by escaping % as %% when setting option
+        url_escaped = url.replace('%', '%%')
+        config.set_main_option("sqlalchemy.url", url_escaped)
 
     return url
 

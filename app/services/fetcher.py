@@ -85,10 +85,33 @@ def fetch_prices(
                 df = df.drop(columns=["adj_close"])
 
             # Guard against empty frames or missing required columns
-            if df is None or df.empty:
-                return pd.DataFrame()
             required_columns = {"open", "high", "low", "close", "volume"}
-            if not required_columns.issubset(df.columns):
+            if df is None or df.empty or not required_columns.issubset(df.columns):
+                # Fallback: try Ticker().history which sometimes succeeds when download() returns empty
+                try:
+                    tk = yf.Ticker(symbol)
+                    df2 = tk.history(
+                        start=fetch_start,
+                        end=fetch_end,
+                        auto_adjust=True,
+                        timeout=settings.FETCH_TIMEOUT_SECONDS,
+                    )
+                    df2 = df2.rename(
+                        columns={
+                            "Open": "open",
+                            "High": "high",
+                            "Low": "low",
+                            "Close": "close",
+                            "Adj Close": "adj_close",
+                            "Volume": "volume",
+                        }
+                    )
+                    if "adj_close" in df2.columns:
+                        df2 = df2.drop(columns=["adj_close"])
+                    if df2 is not None and not df2.empty and required_columns.issubset(df2.columns):
+                        return df2
+                except Exception:
+                    pass
                 return pd.DataFrame()
 
             return df

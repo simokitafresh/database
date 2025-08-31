@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import logging
 from typing import Any, List, Mapping, Optional, Sequence, cast
 
 import anyio
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -15,11 +16,13 @@ from app.db.utils import advisory_lock
 from app.services.fetcher import fetch_prices
 from app.services.upsert import df_to_rows, upsert_prices_sql
 
+
 # Preserve legacy alias for tests and backward compatibility
 async def with_symbol_lock(session: AsyncSession, symbol: str) -> None:
     """Acquire an advisory lock for the given symbol within a transaction."""
     conn = await session.connection()
     await advisory_lock(conn, symbol)
+
 
 _fetch_semaphore = anyio.Semaphore(settings.YF_REQ_CONCURRENCY)
 
@@ -46,7 +49,7 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
     sql = text(
         """
         WITH rng AS (
-            SELECT :date_from::date AS dfrom, :date_to::date AS dto
+            SELECT CAST(:date_from AS date) AS dfrom, CAST(:date_to AS date) AS dto
         ),
         cov AS (
             SELECT MIN(date) AS first_date,
@@ -66,7 +69,6 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
         weekdays_between AS (
             SELECT g.cur_date, g.next_date, (gs.d)::date AS d
             FROM (
-                -- LATERAL 実行前に NULL を除外しておく（NULL stop を防止）
                 SELECT * FROM gaps WHERE next_date IS NOT NULL
             ) AS g
             JOIN LATERAL generate_series(
@@ -89,7 +91,10 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
             (SELECT MIN(first_weekday_missing) FROM weekday_gaps) AS first_missing_weekday
         """
     )
-    res = await session.execute(sql.bindparams(symbol=symbol, date_from=date_from, date_to=date_to))
+
+    res = await session.execute(
+        sql, {"symbol": symbol, "date_from": date_from, "date_to": date_to}
+    )
     row = cast(Mapping[str, Any], res.mappings().first() or {})
     return dict(row)
 
@@ -109,42 +114,75 @@ async def ensure_coverage(
     history.
     """
 
+    logger = logging.getLogger(__name__)
     for symbol in symbols:
+        # 1シンボルごとにトランザクションを開始し、アドバイザリロック取得→欠損判定→取得→UPSERT→コミット
         async with session.begin():
             await with_symbol_lock(session, symbol)
 
-        cov = await _get_coverage(session, symbol, date_from, date_to)
+            cov = await _get_coverage(session, symbol, date_from, date_to)
 
-        last_date: Optional[date] = cov.get("last_date")
-        first_date: Optional[date] = cov.get("first_date")
-        has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
-        first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
+            last_date: Optional[date] = cov.get("last_date")
+            first_date: Optional[date] = cov.get("first_date")
+            has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
+            first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
 
-        if last_date:
-            c1 = max(date_from, last_date - timedelta(days=refetch_days))
-        else:
-            c1 = date_from
+            logger.debug(
+                "coverage result",
+                extra=dict(
+                    symbol=symbol,
+                    date_from=str(date_from),
+                    date_to=str(date_to),
+                    first_date=str(first_date) if first_date else None,
+                    last_date=str(last_date) if last_date else None,
+                    has_gaps=has_gaps,
+                    first_missing_weekday=str(first_missing_weekday)
+                    if first_missing_weekday
+                    else None,
+                ),
+            )
 
-        if has_gaps:
-            if first_missing_weekday:
-                c2 = max(date_from, first_missing_weekday)
+            if last_date:
+                c1 = max(date_from, last_date - timedelta(days=refetch_days))
             else:
-                c2 = date_from
-        else:
-            c2 = None
+                c1 = date_from
 
-        c3 = date_from if (first_date and first_date > date_from) else None
+            if has_gaps:
+                if first_missing_weekday:
+                    c2 = max(date_from, first_missing_weekday)
+                else:
+                    c2 = date_from
+            else:
+                c2 = None
 
-        start = min([c for c in (c1, c2, c3) if c is not None])
+            c3 = date_from if (first_date and first_date > date_from) else None
 
-        df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
-        if df is None or df.empty:
-            continue
-        rows = df_to_rows(df, symbol=symbol, source="yfinance")
-        if not rows:
-            continue
-        up_sql = text(upsert_prices_sql())
-        await session.execute(up_sql, rows)
+            start = min([c for c in (c1, c2, c3) if c is not None])
+            logger.debug(
+                "fetch window decided",
+                extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+            )
+
+            df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
+            if df is None or df.empty:
+                logger.debug(
+                    "yfinance returned empty frame",
+                    extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+                )
+                continue
+            rows = df_to_rows(df, symbol=symbol, source="yfinance")
+            if not rows:
+                logger.debug(
+                    "no valid rows after NaN filtering",
+                    extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+                )
+                continue
+            up_sql = text(upsert_prices_sql())
+            await session.execute(up_sql, rows)
+            logger.debug(
+                "upserted rows",
+                extra=dict(symbol=symbol, n_rows=len(rows)),
+            )
 
 
 async def get_prices_resolved(
@@ -162,7 +200,9 @@ async def get_prices_resolved(
     out: List[dict] = []
     sql = text("SELECT * FROM get_prices_resolved(:symbol, :date_from, :date_to)")
     for s in symbols:
-        res = await session.execute(sql.bindparams(symbol=s, date_from=date_from, date_to=date_to))
+        res = await session.execute(
+            sql, {"symbol": s, "date_from": date_from, "date_to": date_to}
+        )
         out.extend([dict(m) for m in res.mappings().all()])
     out.sort(key=lambda r: (r["date"], r["symbol"]))
     return out

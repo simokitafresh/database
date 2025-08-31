@@ -1,4 +1,12 @@
+import asyncio
+import sys
+
+# Windows環境でpsycopgを使用する場合の設定
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 
@@ -29,6 +37,13 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 init_error_handlers(app)
+
+# Set application log level from settings (INFO by default)
+try:
+    level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    logging.getLogger().setLevel(level)
+except Exception:
+    pass
 
 app.add_middleware(RequestIDMiddleware)
 cors = create_cors_middleware(settings)

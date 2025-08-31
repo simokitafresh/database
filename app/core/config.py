@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     APP_ENV: str = "development"
-    DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost:5432/app"
+    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
     API_MAX_SYMBOLS: int = 5
     API_MAX_ROWS: int = 10000
     YF_REFETCH_DAYS: int = 30

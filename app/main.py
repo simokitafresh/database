@@ -53,3 +53,9 @@ if cors:
 
 app.include_router(health_router)
 app.include_router(v1_router)
+
+
+@app.get("/")
+async def root() -> dict:
+    """Root endpoint useful for platform pings and quick checks."""
+    return {"status": "ok", "service": "Stock OHLCV API"}

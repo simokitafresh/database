@@ -606,3 +606,22 @@ def compute_metrics(price_map: dict[str, pd.DataFrame]) -> list[dict]:
 - CORS の `*` と資格情報は併用不可。
 
 以上の補足は、既存の設計・仕様を変えるものではなく、実装上の解釈のブレを防ぐための明文化です。
+
+---
+
+12. 接続/取得/ログ（実装準拠の正式章）
+
+- 接続と DSN
+  - アプリ実行時は `DATABASE_URL` に `postgresql+asyncpg://` を推奨します。
+  - Alembic 実行時は同期ドライバ（`postgresql://` または `postgresql+psycopg://`）を使用します。`ALEMBIC_DATABASE_URL` が未設定の場合でも、`DATABASE_URL` を同期ドライバへ変換して適用します。
+  - Alembic の URL 補間回避: `app/migrations/env.py` で URL 内の `%` を `%%` にエスケープして `sqlalchemy.url` を設定します（ConfigParser の補間誤解釈を防止）。
+  - asyncpg + PgBouncer(transaction/statement) 対策: 準備済みステートメントのキャッシュを無効化し、動的名称（UUID）を付与。アプリ側は `NullPool` を利用し PgBouncer のプールを前提とします。`?sslmode=require` は asyncpg へ渡さず、必要時は接続引数で TLS を有効化できるよう DSN を正規化します。
+
+- /v1/prices のオンデマンド取得
+  - 1 シンボル = 1 トランザクションで、アドバイザリロック → カバレッジ判定 → 必要区間の取得（直近 N 日のリフレッチ含む）→ UPSERT → コミットを実行します。
+  - yfinance は `download()` を基本とし、空/列不足時は `Ticker().history()` をフォールバックとして試行します。
+  - yfinance の `end` は排他的なため、内部で +1 日補正して包含します。
+
+- ログ
+  - `.env` の `LOG_LEVEL` をルートロガーへ適用します（既定は `INFO`）。
+  - `DEBUG` 時は、カバレッジ結果、決定した取得ウィンドウ、UPSERT 件数、フォールバック実行の有無などを出力します。

@@ -9,57 +9,48 @@ yfinance APIを使用して、未登録銘柄を自動的に検証・登録す�
 **WHAT**: yfinance APIで銘柄の存在を確認し、存在する場合は自動的にsymbolsテーブルに登録する機能を追加する。
 
 ## 前提条件
-- Python 3.12環境 ✓
-- 既存のStock OHLCV APIプロジェクト ✓
-- yfinanceライブラリインストール済み（Yahoo Finance APIラッパー）✓
-- PostgreSQL（Supabase）接続設定済み ✓
-- FastAPI フレームワーク ✓
-- SQLAlchemy 2.0 (async) ✓
-- Pydantic v2 ✓
-- 既存のテストフレームワーク（pytest + pytest-asyncio）✓
+- Python 3.11環境
+- 既存のStock OHLCV APIプロジェクト  
+- yfinanceライブラリインストール済み（Yahoo Finance APIラッパー）
+- PostgreSQL（Supabase）接続設定済み
 
 ## 現在のフォルダー構造
 ```
 app/
 ├── api/
-│   ├── deps.py           # 依存性注入 ✓
-│   ├── errors.py         # エラー定義 ✓
+│   ├── deps.py           # 依存性注入（実装済み）
+│   ├── errors.py         # エラー定義（実装済み）
 │   └── v1/
-│       ├── prices.py     # 価格API ✓
-│       ├── symbols.py    # シンボルAPI ✓
-│       ├── coverage.py   # カバレッジAPI ✓
-│       ├── fetch.py      # フェッチジョブAPI ✓
-│       └── health.py     # ヘルスチェック ✓
+│       ├── prices.py     # 価格API（修正対象）
+│       ├── symbols.py    # 銘柄API（実装済み）
+│       ├── coverage.py   # カバレッジAPI（実装済み）
+│       ├── fetch.py      # フェッチAPI（実装済み）
+│       └── health.py     # ヘルスAPI（実装済み）
 ├── core/
-│   ├── config.py         # アプリケーション設定 ✓
-│   ├── cors.py           # CORS設定 ✓
-│   ├── logging.py        # ログ設定 ✓
-│   └── middleware.py     # ミドルウェア ✓
+│   └── config.py         # 設定（修正対象）
 ├── db/
-│   ├── engine.py         # データベースエンジン ✓
-│   ├── models.py         # SQLAlchemyモデル ✓
-│   ├── queries.py        # データベースクエリ ✓
-│   └── utils.py          # DB ユーティリティ ✓
-├── schemas/
-│   ├── common.py         # 共通スキーマ ✓
-│   ├── prices.py         # 価格スキーマ ✓
-│   ├── symbols.py        # シンボルスキーマ ✓
-│   ├── coverage.py       # カバレッジスキーマ ✓
-│   └── fetch_jobs.py     # フェッチジョブスキーマ ✓
+│   ├── engine.py         # DB接続（実装済み）
+│   ├── models.py         # DBモデル（実装済み）
+│   ├── queries.py        # DBクエリ（実装済み）
+│   └── utils.py          # DBユーティリティ（実装済み）
 ├── services/
-│   ├── fetcher.py        # yfinance データフェッチ ✓
-│   ├── normalize.py      # 銘柄正規化 ✓
-│   ├── resolver.py       # データ解決 ✓
-│   ├── upsert.py         # データアップサート ✓
-│   ├── coverage.py       # カバレッジ分析 ✓
-│   ├── fetch_jobs.py     # フェッチジョブ管理 ✓
-│   ├── fetch_worker.py   # フェッチワーカー ✓
-│   ├── query_optimizer.py # クエリ最適化 ✓
+│   ├── coverage.py       # カバレッジサービス（実装済み）
+│   ├── fetcher.py        # yfinance利用（実装済み）
+│   ├── fetch_jobs.py     # フェッチジョブ（実装済み）
+│   ├── fetch_worker.py   # フェッチワーカー（実装済み）
+│   ├── normalize.py      # 銘柄正規化（実装済み）
+│   ├── resolver.py       # 解決サービス（実装済み）
+│   ├── upsert.py         # アップサート（実装済み）
+│   ├── query_optimizer.py # クエリ最適化（実装済み）
 │   ├── symbol_validator.py     # 【新規作成予定】
 │   └── auto_register.py        # 【新規作成予定】
-└── tests/                       # 【テスト拡張予定】
-    ├── unit/             # 既存ユニットテスト ✓
-    ├── e2e/              # 既存E2Eテスト ✓
+├── schemas/
+│   ├── common.py         # 共通スキーマ（実装済み）
+│   ├── coverage.py       # カバレッジスキーマ（実装済み）
+│   ├── fetch_jobs.py     # フェッチジョブスキーマ（実装済み）
+│   ├── prices.py         # 価格スキーマ（実装済み）
+│   └── symbols.py        # 銘柄スキーマ（実装済み）
+└── tests/                       # 【新規作成予定】
     ├── test_symbol_validator.py # 【新規作成予定】
     ├── test_auto_register.py    # 【新規作成予定】
     └── test_api_auto_register.py # 【新規作成予定】
@@ -118,16 +109,7 @@ app/
       4. 存在するならinsert_symbol()でDB登録
       """
   ```
-- [ ] **インポート**: 
-  ```python
-  from sqlalchemy.ext.asyncio import AsyncSession
-  from sqlalchemy import text
-  from app.services.normalize import normalize_symbol
-  from app.services.symbol_validator import validate_symbol_exists
-  import logging
-  
-  logger = logging.getLogger(__name__)
-  ```
+- [ ] **インポート**: `from app.services.symbol_validator import validate_symbol_exists`
 
 #### タスク 2.2: 銘柄存在確認クエリの作成
 - [ ] **ファイル**: `app/services/auto_register.py`に追加
@@ -149,67 +131,55 @@ app/
   ```python
   async def insert_symbol(session: AsyncSession, symbol: str) -> bool:
       """
-      Insert new symbol into database with minimal information.
-      
-      INSERT INTO symbols (symbol, is_active, name, exchange, currency, first_date, last_date)
-      VALUES (:symbol, true, NULL, NULL, NULL, NULL, NULL)
+      INSERT INTO symbols (symbol, is_active, first_date, last_date)
+      VALUES (:symbol, true, NULL, NULL)
       ON CONFLICT (symbol) DO NOTHING
       """
-      try:
-          result = await session.execute(
-              text("""
-                  INSERT INTO symbols (symbol, is_active, name, exchange, currency, first_date, last_date)
-                  VALUES (:symbol, true, NULL, NULL, NULL, NULL, NULL)
-                  ON CONFLICT (symbol) DO NOTHING
-              """),
-              {"symbol": symbol}
-          )
-          await session.commit()
-          return result.rowcount > 0
-      except Exception as e:
-          await session.rollback()
-          raise e
   ```
-- [ ] **注意**: name, exchange, currency, first_date, last_dateはNULLで登録（最小限の情報）
+- [ ] **注意**: name, exchange, currencyはNULLで登録（最小限の情報）
 
 ---
 
 ### 3. エラーハンドリングの追加
 
-#### タスク 3.1: Yahoo Finance銘柄不存在エラーの作成
-- [ ] **ファイル**: `app/api/errors.py`に追加
+#### タスク 3.1: Yahoo Finance銘柄不存在エラーの確認・拡張
+- [ ] **ファイル**: `app/api/errors.py`を確認・修正
 - [ ] **WHY**: ユーザーに銘柄が存在しないことを明確に伝える
+- [ ] **現在の実装**: `SymbolNotFoundError`クラスが既に存在（65行目）
 - [ ] **WHAT**:
   ```python
-  # 新しいエラーコード（既存のエラーコード定義部分に追加）
-  SYMBOL_NOT_EXISTS = "SYMBOL_NOT_EXISTS"
-  AUTO_REGISTRATION_FAILED = "AUTO_REGISTRATION_FAILED"
-  
-  class SymbolNotExistsError(HTTPException):
-      """Exception raised when symbol does not exist in Yahoo Finance."""
-      def __init__(self, symbol: str):
+  # 既存のSymbolNotFoundErrorを確認し、必要に応じて拡張
+  class SymbolNotFoundError(HTTPException):
+      """Exception raised when a symbol is not found."""
+      def __init__(self, symbol: str, source: str = "database"):
+          message = f"Symbol '{symbol}' not found"
+          if source == "yfinance":
+              message = f"Symbol '{symbol}' does not exist in Yahoo Finance"
+          elif source == "database":
+              message = f"Symbol '{symbol}' not found in database"
+          
           super().__init__(
               status_code=404,
-              detail={
-                  "code": SYMBOL_NOT_EXISTS,
-                  "message": f"Symbol '{symbol}' does not exist in Yahoo Finance",
-                  "symbol": symbol
-              }
+              detail={"code": SYMBOL_NOT_FOUND, "message": message, "symbol": symbol}
           )
   ```
+- [ ] **新しいエラーコード追加**: `SYMBOL_NOT_EXISTS = "SYMBOL_NOT_EXISTS"`
 
 #### タスク 3.2: 自動登録失敗エラーの作成
 - [ ] **ファイル**: `app/api/errors.py`に追加
 - [ ] **WHY**: DB登録失敗を通知
 - [ ] **WHAT**:
   ```python
+  # 新しいエラーコード
+  SYMBOL_REGISTRATION_FAILED = "SYMBOL_REGISTRATION_FAILED"
+  
   class SymbolRegistrationError(HTTPException):
       """Exception raised when automatic symbol registration fails."""
       def __init__(self, symbol: str, reason: str):
           super().__init__(
               status_code=500,
               detail={
-                  "code": AUTO_REGISTRATION_FAILED,
+                  "code": SYMBOL_REGISTRATION_FAILED,
                   "message": f"Failed to auto-register symbol '{symbol}': {reason}",
                   "symbol": symbol,
                   "reason": reason
@@ -229,14 +199,15 @@ app/
   class Settings(BaseSettings):
       # ... 既存の設定 ...
       
-      # 自動登録機能
+      # 自動登録機能 (既存のAPI設定セクションに追加)
       ENABLE_AUTO_REGISTRATION: bool = True
       AUTO_REGISTER_TIMEOUT: int = 15  # 全体のタイムアウト
-      YF_VALIDATE_TIMEOUT: int = 10    # yfinance検証のタイムアウト
-      AUTO_REGISTER_MAX_PARALLEL: int = 3  # 並行処理数
-      AUTO_REGISTER_BATCH_SIZE: int = 10  # バッチ登録サイズ
+      YF_VALIDATE_TIMEOUT: int = 10    # yfinance検証のタイムアウト（既存のFETCH_TIMEOUT_SECONDSと同様）
+      
+      # 既存: FETCH_TIMEOUT_SECONDS: int = 8
+      # 既存: FETCH_MAX_RETRIES: int = 3
+      # 既存: FETCH_BACKOFF_MAX_SECONDS: float = 8.0
   ```
-- [ ] **挿入位置**: Fetch Job Settingsの後
 
 ---
 
@@ -245,25 +216,26 @@ app/
 #### タスク 5.1: 自動登録処理の統合
 - [ ] **ファイル**: `app/api/v1/prices.py`の`get_prices`関数を修正
 - [ ] **WHY**: 既存のAPIに自動登録機能を組み込む
+- [ ] **現在の実装**: 65行目付近でensure_coverageを呼び出し中
 - [ ] **WHAT**: 
   ```python
   async def get_prices(...):
-      # ... 既存のバリデーション（_parse_and_validate_symbols）...
-      
-      # 新規追加: 自動登録処理
+      # --- validation --- (既存)
+      if date_to < date_from:
+          raise HTTPException(status_code=422, detail="invalid date range")
+      symbols_list = _parse_and_validate_symbols(symbols)
+      if not symbols_list:
+          return []
+
+      # --- 新規追加: 自動登録処理 ---
       if settings.ENABLE_AUTO_REGISTRATION:
           await ensure_symbols_registered(session, symbols_list)
-      
-      # 既存のensure_coverageより前に実行
-      await queries.ensure_coverage(
-          session=session,
-          symbols=symbols_list,
-          date_from=from_date,
-          date_to=to_date,
-          refetch_days=settings.YF_REFETCH_DAYS
-      )
+
+      # --- orchestration --- (既存のensure_coverage処理)
+      t0 = time.perf_counter()
+      await queries.ensure_coverage(...)
   ```
-- [ ] **挿入位置**: `queries.ensure_coverage`の直前
+- [ ] **挿入位置**: `await queries.ensure_coverage`の直前（65行目付近）
 
 #### タスク 5.2: 自動登録ロジック関数の実装
 - [ ] **ファイル**: `app/api/v1/prices.py`に追加
@@ -275,18 +247,26 @@ app/
       symbols: List[str]
   ) -> None:
       """
-      for symbol in symbols:
-          1. DB確認
-          2. 未登録ならyfinance確認
-          3. 存在するなら登録
-          4. 存在しないならSymbolNotExistsError発生
+      自動登録処理：複数銘柄の登録確認と自動登録
       """
+      for symbol in symbols:
+          try:
+              # 1. DB確認（既存チェック）
+              # 2. 未登録ならyfinance確認
+              # 3. 存在するなら登録、存在しないならSymbolNotExistsError発生
+              success = await auto_register_symbol(session, symbol)
+              if success:
+                  logger.info(f"Successfully auto-registered symbol: {symbol}")
+          except Exception as e:
+              logger.error(f"Auto-registration failed for {symbol}: {e}")
+              # 銘柄不存在の場合は明確なエラーを発生
+              if "not found" in str(e).lower():
+                  from app.api.errors import SymbolNotFoundError
+                  raise SymbolNotFoundError(symbol)
+              raise
   ```
-- [ ] **インポート追加**: 
-  ```python
-  from app.services.auto_register import auto_register_symbol, ensure_symbols_registered
-  ```
-- [ ] **挿入位置**: 既存のインポート文の後、`normalize_symbol`インポートの近く
+- [ ] **インポート追加**: `from app.services.auto_register import auto_register_symbol`
+- [ ] **配置**: ファイル上部の関数定義エリア（`_parse_and_validate_symbols`の下）
 
 ---
 
@@ -318,30 +298,28 @@ app/
 #### タスク 7.1: yfinance銘柄検証テスト
 - [ ] **ファイル**: `tests/unit/test_symbol_validator.py`を作成
 - [ ] **WHY**: yfinance連携の動作確認
+- [ ] **現在のテスト環境**: 既存の`tests/unit/`ディレクトリに多数のテストファイルが存在
 - [ ] **WHAT**:
   ```python
   import pytest
+  from unittest.mock import patch, MagicMock
   from app.services.symbol_validator import validate_symbol_exists, get_symbol_info
   
   def test_valid_symbol():
-      """既存の銘柄（AAPL）が正常に検証される"""
+      """実在銘柄のテスト"""
       assert validate_symbol_exists("AAPL") == True
       
   def test_invalid_symbol():
-      """存在しない銘柄（XXXYYY）が正しく失敗する"""
+      """存在しない銘柄のテスト"""  
       assert validate_symbol_exists("XXXYYY") == False
       
-  def test_timeout():
-      """タイムアウト処理のテスト（モック使用）"""
+  @patch('app.services.symbol_validator.yf.Ticker')
+  def test_timeout_handling(mock_ticker):
+      """タイムアウトの処理テスト"""
       # モックでタイムアウトをシミュレート
-      
-  def test_get_symbol_info_valid():
-      """銘柄情報取得のテスト - 有効な銘柄"""
-      info = get_symbol_info("AAPL")
-      assert info["symbol"] == "AAPL"
-      assert info["exists"] == True
-      assert info["error"] is None
+      pass
   ```
+- [ ] **参考**: `tests/unit/test_fetcher.py`（既存のyfinance関連テスト）
 
 #### タスク 7.2: 自動登録テスト  
 - [ ] **ファイル**: `tests/unit/test_auto_register.py`を作成
@@ -350,71 +328,54 @@ app/
   ```python
   import pytest
   from sqlalchemy.ext.asyncio import AsyncSession
-  from app.services.auto_register import (
-      auto_register_symbol, 
-      symbol_exists_in_db, 
-      insert_symbol,
-      ensure_symbols_registered
-  )
-  from app.db.engine import create_engine_and_sessionmaker
+  from app.services.auto_register import auto_register_symbol, symbol_exists_in_db
   
   @pytest.mark.asyncio
   async def test_register_new_symbol(async_session: AsyncSession):
-      """新しい銘柄の登録テスト"""
-      # テスト用の未登録銘柄でテスト
-      result = await auto_register_symbol(async_session, "MSFT")
-      assert result == True
+      """新規銘柄の登録テスト"""
+      # MSFT未登録→登録成功のシナリオ
+      pass
       
   @pytest.mark.asyncio  
   async def test_skip_existing_symbol(async_session: AsyncSession):
       """既存銘柄のスキップテスト"""
-      # 既に登録済みの銘柄でテスト
-      result = await auto_register_symbol(async_session, "AAPL")
-      assert result == False  # 既存なのでスキップ
+      # AAPL登録済み→スキップのシナリオ
+      pass
       
   @pytest.mark.asyncio
   async def test_invalid_symbol_error(async_session: AsyncSession):
-      """無効な銘柄でのエラーテスト"""
-      with pytest.raises(Exception):  # SymbolNotExistsError
-          await auto_register_symbol(async_session, "XXXYYY")
+      """無効銘柄のエラーテスト"""
+      # XXXYYY→エラーのシナリオ
+      pass
   ```
+- [ ] **参考**: `tests/unit/test_db_coverage.py`（既存のDB関連テスト）
 
 #### タスク 7.3: API統合テスト
-- [ ] **ファイル**: `tests/e2e/test_api_auto_register.py`を作成
+- [ ] **ファイル**: `tests/integration/test_auto_register_api.py`を作成
 - [ ] **WHY**: エンドツーエンドの動作確認
+- [ ] **現在のintegrationテスト**: `tests/integration/`ディレクトリに複数のAPIテストが存在
 - [ ] **WHAT**:
   ```python
   import pytest
   from fastapi.testclient import TestClient
   from app.main import app
-  from app.core.config import settings
   
   client = TestClient(app)
   
   @pytest.mark.asyncio
   async def test_api_with_unregistered_symbol():
-      """未登録銘柄での API テスト"""
-      # 事前に銘柄が未登録であることを確認
+      """未登録銘柄での自動登録テスト"""
       response = client.get("/v1/prices?symbols=TSLA&from=2024-01-01&to=2024-01-31")
       assert response.status_code == 200
-      data = response.json()
-      assert "prices" in data
       
-  @pytest.mark.asyncio
+  @pytest.mark.asyncio  
   async def test_api_with_invalid_symbol():
-      """無効な銘柄での API テスト"""
+      """無効銘柄でのエラーレスポンステスト"""
       response = client.get("/v1/prices?symbols=XXXYYY&from=2024-01-01&to=2024-01-31")
       assert response.status_code == 404
-      data = response.json()
-      assert data["error"]["code"] == "SYMBOL_NOT_EXISTS"
-      
-  @pytest.mark.asyncio 
-  async def test_auto_registration_disabled():
-      """自動登録無効時のテスト"""
-      # 設定で自動登録を無効にしてテスト
-      # （モックまたは一時的な設定変更）
-      pass
+      assert "SYMBOL_NOT_FOUND" in response.json()["detail"]["code"]
   ```
+- [ ] **参考**: `tests/integration/test_fetch_api.py`（既存のAPI統合テスト）
 
 ---
 
@@ -457,15 +418,18 @@ app/
 ### 9. 既存コードの調整
 
 #### タスク 9.1: ensure_coverage関数のエラー改善
-- [ ] **ファイル**: `app/db/queries.py`の`ensure_coverage`関数
-- [ ] **WHY**: 銘柄不在時のエラーメッセージ改善
-- [ ] **WHAT**:
+- [ ] **ファイル**: `app/db/queries.py`の`ensure_coverage`関数を修正
+- [ ] **WHY**: 銘柄が未登録の場合のエラーメッセージ改善
+- [ ] **現在の実装**: `ensure_coverage`関数（102行目）が存在し、アドバイザリロック機能を持つ
+- [ ] **WHAT**: 
   ```python
-  # 外部キー違反をキャッチして詳細メッセージ
+  # with_symbol_lockまたは_get_coverage内で外部キー違反をキャッチ
   except IntegrityError as e:
-      if "foreign key violation" in str(e):
-          raise ValueError(f"Symbol {symbol} not registered in database")
+      if "foreign key violation" in str(e).lower():
+          raise ValueError(f"Symbol '{symbol}' not registered in symbols table. Enable auto-registration or register manually.")
+      raise
   ```
+- [ ] **対象関数**: `_get_coverage`または`with_symbol_lock`内の例外処理
 
 #### タスク 9.2: 正規化の適用
 - [ ] **ファイル**: `app/services/auto_register.py`
@@ -497,79 +461,104 @@ app/
   ```
 
 #### タスク 10.2: 環境変数ドキュメントの追加
-- [ ] **ファイル**: `.env.example`を更新
+- [ ] **ファイル**: `.env.example`を作成（または更新）
 - [ ] **WHY**: デプロイ時の設定ガイド
+- [ ] **現在の環境**: Renderクラウドデプロイメント対応
 - [ ] **WHAT**:
   ```bash
-  # Auto-registration settings
-  ENABLE_AUTO_REGISTRATION=true      # Enable automatic symbol registration
-  AUTO_REGISTER_TIMEOUT=15           # Total timeout for registration process (seconds)
-  YF_VALIDATE_TIMEOUT=10             # Timeout for Yahoo Finance validation (seconds)
-  AUTO_REGISTER_MAX_PARALLEL=3       # Maximum parallel validation processes
-  AUTO_REGISTER_BATCH_SIZE=10        # Batch size for symbol registration
+  # Auto-registration settings (新規追加)
+  ENABLE_AUTO_REGISTRATION=true     # Enable automatic symbol registration
+  AUTO_REGISTER_TIMEOUT=15          # Total timeout for registration process (seconds)
+  YF_VALIDATE_TIMEOUT=10            # Timeout for Yahoo Finance validation (seconds)
+  
+  # Existing API settings (参考)
+  API_MAX_SYMBOLS=5                 # Maximum symbols per request
+  FETCH_TIMEOUT_SECONDS=8           # yfinance fetch timeout
+  FETCH_MAX_RETRIES=3               # Retry attempts for failed fetches
+  YF_REFETCH_DAYS=30               # Days to refetch recent data
   ```
-- [ ] **挿入位置**: Fetch Job Settingsセクションの後
 
 ---
 
 ## 実装順序（推奨）
 
-1. **基盤作成**: タスク1, 2（yfinance連携とDB操作）
-2. **エラー処理**: タスク3, 4（例外とと設定）
-3. **統合**: タスク5, 6（API組み込み）
-4. **テスト**: タスク7（動作確認）
-5. **最適化**: タスク8, 9（性能改善）
-6. **文書化**: タスク10（ドキュメント）
+### フェーズ1: 基盤作成 (1-2日)
+1. **タスク1**: `symbol_validator.py`作成（yfinance連携）
+2. **タスク2**: `auto_register.py`作成（DB操作）
+3. **タスク4.1**: 設定追加（config.py修正）
+
+### フェーズ2: エラー処理 (0.5日)
+4. **タスク3**: エラーハンドリング（errors.py修正）
+
+### フェーズ3: API統合 (1日)  
+5. **タスク5**: API統合（prices.py修正）
+6. **タスク6**: ロギング追加
+
+### フェーズ4: テスト (1-2日)
+7. **タスク7**: ユニットテスト作成と実行
+
+### フェーズ5: 最適化（オプション、1-2日）
+8. **タスク8**: 並行処理最適化
+9. **タスク9**: 既存コード調整
+10. **タスク10**: ドキュメント更新
+
+## MVP（最小実行可能製品）スコープ
+
+**必須機能（フェーズ1-3）**:
+- yfinance銘柄検証
+- 基本的な自動登録  
+- API統合とエラーハンドリング
+- 設定による機能ON/OFF
+
+**後追加可能（フェーズ4-5）**:
+- 包括的テストスイート
+- 並行処理最適化
+- 詳細ロギングと監視
+- ドキュメント整備
 
 ## 完了基準
 
-- [ ] 未登録銘柄（例: NVDA、TSLA）のAPI呼び出しが成功する
-- [ ] 無効銘柄（例: XXXYYY）は404エラー（SYMBOL_NOT_EXISTS）を返す
-- [ ] 2回目以降のアクセスは高速（DBキャッシュ利用、自動登録スキップ）
-- [ ] ログで自動登録処理を確認できる
-- [ ] 全ユニットテストがパスする
-- [ ] E2Eテストで実際のAPI経由での動作確認ができる
-- [ ] 本番環境（Render）での動作確認が完了する
-- [ ] `ENABLE_AUTO_REGISTRATION=false`でも既存機能が正常動作する
+### 基本機能確認
+- [ ] 未登録銘柄（例: 新しいIPO銘柄）のAPI呼び出しが自動登録後に成功する
+- [ ] 無効銘柄（例: XXXYYY）は明確な404エラーを返す  
+- [ ] 2回目以降の同一銘柄呼び出しは高速（DBから直接取得）
+- [ ] `ENABLE_AUTO_REGISTRATION=false`で機能を無効化できる
 
-## yfinance API仕様メモ（現在の実装ベース）
+### 運用面確認
+- [ ] ログで自動登録プロセスを追跡できる
+- [ ] yfinance APIエラー時の適切な例外処理
+- [ ] 既存機能に影響を与えない（既存のテストがパス）
+
+### パフォーマンス確認
+- [ ] 単一銘柄の初回登録: 10秒以内
+- [ ] 5銘柄の並行登録: 15秒以内  
+- [ ] 既存銘柄のレスポンス時間: 影響なし
+
+## yfinance API仕様メモ
 
 ```python
 import yfinance as yf
-from datetime import datetime, timedelta
 
 # 銘柄オブジェクト作成
 ticker = yf.Ticker("AAPL")
 
 # 銘柄情報取得（存在確認に使用）
-try:
-    info = ticker.info  # 辞書型、存在しない場合は空のdictまたはHTTPError
-    # 存在確認: info.get('symbol') や info.get('regularMarketPrice') の有無で判定
-except Exception as e:
-    # HTTPError 404またはその他のエラー = 銘柄なし
-    print(f"Symbol validation error: {e}")
+info = ticker.info  # 辞書型、存在しない場合はHTTPError 404
 
-# よく使うinfoのキー（存在する場合）
-symbol = info.get('symbol', 'N/A')           # "AAPL"
-short_name = info.get('shortName', 'N/A')    # "Apple Inc."  
-exchange = info.get('exchange', 'N/A')       # "NMS"
-currency = info.get('currency', 'N/A')      # "USD"
-regular_market_price = info.get('regularMarketPrice')  # 現在価格（存在確認に有用）
+# よく使うinfoのキー
+info['symbol']       # "AAPL"
+info['shortName']    # "Apple Inc."
+info['exchange']     # "NMS"
+info['currency']     # "USD"
 
 # 価格データ取得（既存のfetcher.pyで実装済み）
-# app/services/fetcher.py の fetch_prices() 関数を参照
-start_date = datetime.now() - timedelta(days=365)
-end_date = datetime.now()
-df = yf.download("AAPL", start=start_date, end=end_date, progress=False)
+df = yf.download("AAPL", start="2024-01-01", end="2024-12-31")
 ```
 
 ## 注意事項
 
 - yfinance.Ticker().infoは初回呼び出しが遅い（2-5秒）
-- Yahoo Financeのレート制限あり（秒間2-5リクエスト推奨）
-- yfinanceは同期APIなのでFastAPIでは`run_in_threadpool`使用が必要
+- Yahoo Financeのレート制限あり（秒間2リクエスト推奨）
+- yfinanceは同期APIなのでasyncioではrun_in_threadpool使用
 - トランザクション管理を適切に（外部キー制約エラー対策）
 - 必ずnormalize_symbol()で正規化してから処理
-- 既存のfetcher.pyサービスとの整合性を保つ
-- 現在のデータベースプールサイズ（5）とmax_overflow（5）を考慮した並行処理設計
-- Supabaseクラウドデータベースとの接続安定性を確保

@@ -147,52 +147,6 @@ async def create_fetch_job_endpoint(
                 }
             }
         )
-        
-        # Start background processing
-        background_tasks.add_task(
-            process_fetch_job,
-            job_id=job_id,
-            symbols=request.symbols,
-            date_from=request.date_from,
-            date_to=request.date_to,
-            interval=request.interval,
-            force=request.force,
-            max_concurrency=2  # TODO: make configurable
-        )
-        
-        return {
-            "job_id": job_id,
-            "status": "pending",
-            "message": f"Fetch job created for {len(request.symbols)} symbols",
-            "symbols_count": len(request.symbols),
-            "date_range": {
-                "from": request.date_from.isoformat(),
-                "to": request.date_to.isoformat()
-            },
-            "created_at": datetime.utcnow().isoformat(),
-            "estimated_duration_minutes": len(request.symbols) * 2  # Rough estimate
-        }
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error creating fetch job: {e}", exc_info=True)
-        
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": {
-                    "code": "JOB_CREATION_ERROR",
-                    "message": "Failed to create fetch job",
-                    "details": {
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                }
-            }
-        )
 
 
 @router.get("/fetch/{job_id}", response_model=FetchJobResponse)
@@ -243,26 +197,6 @@ async def get_fetch_job_status(
                 "error": {
                     "code": "JOB_STATUS_ERROR",
                     "message": f"Failed to retrieve job status: {str(e)}"
-                }
-            }
-        )
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error getting job status for {job_id}: {e}", exc_info=True)
-        
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": {
-                    "code": "STATUS_RETRIEVAL_ERROR",
-                    "message": "Failed to retrieve job status",
-                    "details": {
-                        "job_id": job_id,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
                 }
             }
         )
@@ -438,35 +372,6 @@ async def cancel_fetch_job(
                 "error": {
                     "code": "CANCEL_ERROR",
                     "message": f"Failed to cancel job: {str(e)}"
-                }
-            }
-        )
-        
-        return {
-            "job_id": job_id,
-            "status": "cancelled",
-            "message": "Job cancelled successfully",
-            "cancelled_at": datetime.utcnow().isoformat()
-        }
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error cancelling job {job_id}: {e}", exc_info=True)
-        
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": {
-                    "code": "CANCEL_ERROR",
-                    "message": "Failed to cancel job",
-                    "details": {
-                        "job_id": job_id,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
                 }
             }
         )

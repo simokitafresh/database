@@ -68,12 +68,8 @@ def create_engine_and_sessionmaker(
             lambda: f"__asyncpg_{uuid.uuid4()}__"
         )
         
-        # Supabase接続の最適化（asyncpg専用オプション）
-        if "supabase.com" in database_url:
-            connect_args.update({
-                "command_timeout": 30,  # コマンドタイムアウト
-                "server_lifetime": 600,  # サーバーライフタイム
-            })
+        # Supabase接続の最適化（基本設定のみ）
+        # Note: command_timeout and server_lifetime are not supported by Supabase pooler
         
         if ssl_required:
             connect_args.setdefault("ssl", True)

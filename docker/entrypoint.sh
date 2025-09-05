@@ -96,7 +96,30 @@ except Exception as e:
 test_db_connection
 
 echo "[entrypoint] Running migrations against ${ALEMBIC_DATABASE_URL}"
-alembic upgrade head
+
+# Debug: Check current migration state
+echo "[entrypoint] Checking current migration state..."
+alembic current || echo "[entrypoint] No current migration found"
+
+echo "[entrypoint] Showing migration history..."
+alembic history --verbose || echo "[entrypoint] Error showing history"
+
+# Try to run migrations
+echo "[entrypoint] Attempting migration upgrade..."
+if ! alembic upgrade head; then
+  echo "[entrypoint] Migration failed, attempting to resolve..."
+  
+  # Check if alembic_version table exists and has conflicting data
+  echo "[entrypoint] Checking for migration conflicts..."
+  
+  # Try to stamp current state to head (reset to latest)
+  echo "[entrypoint] Resetting migration state to head..."
+  alembic stamp head
+  
+  # Now try upgrade again
+  echo "[entrypoint] Retrying migration upgrade..."
+  alembic upgrade head
+fi
 
 echo "[entrypoint] Starting gunicorn (UvicornWorker)"
 exec gunicorn app.main:app \

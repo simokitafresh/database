@@ -104,9 +104,6 @@ def run_migrations_online() -> None:
     # Supabase用の接続設定
     if "supabase.com" in url:
         config_section.update({
-            "sqlalchemy.pool_timeout": "30",
-            "sqlalchemy.pool_recycle": "1800",
-            "sqlalchemy.pool_pre_ping": "true",
             "sqlalchemy.connect_args": {
                 "connect_timeout": 30,
                 "command_timeout": 30,

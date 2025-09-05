@@ -87,6 +87,15 @@ def create_engine_and_sessionmaker(
     
     elif database_url.startswith("sqlite"):
         # SQLite doesn't support pool settings
+        # Convert to aiosqlite for async support
+        if not database_url.startswith("sqlite+aiosqlite"):
+            if database_url == "sqlite:///":
+                database_url = "sqlite+aiosqlite:///:memory:"
+            elif database_url.startswith("sqlite:///"):
+                database_url = database_url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+            else:
+                database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+        
         poolclass = None
         pool_size = None
         max_overflow = None
@@ -113,7 +122,7 @@ def create_engine_and_sessionmaker(
         else:
             engine_kwargs["poolclass"] = poolclass
     else:
-        # SQLite-specific settings
+        # SQLite + aiosqlite specific settings
         engine_kwargs.update({
             "poolclass": StaticPool,
             "connect_args": {**connect_args, "check_same_thread": False}

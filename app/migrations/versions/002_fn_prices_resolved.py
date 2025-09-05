@@ -1,8 +1,8 @@
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "002_fn_prices_resolved"
-down_revision = "001_init"
+revision = "002"
+down_revision = "001"
 branch_labels = None
 depends_on = None
 

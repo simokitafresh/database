@@ -8,8 +8,8 @@ Create Date: 2025-08-29
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "003_add_price_checks"
-down_revision = "002_fn_prices_resolved"
+revision = "003"
+down_revision = "002"
 branch_labels = None
 depends_on = None
 

@@ -68,7 +68,7 @@ def create_engine_and_sessionmaker(
             lambda: f"__asyncpg_{uuid.uuid4()}__"
         )
         
-        # Supabase接続の最適化
+        # Supabase接続の最適化（asyncpg専用オプション）
         if "supabase.com" in database_url:
             connect_args.update({
                 "command_timeout": 30,  # コマンドタイムアウト
@@ -83,7 +83,11 @@ def create_engine_and_sessionmaker(
             poolclass = NullPool
         
     elif database_url.startswith("postgresql+psycopg://"):
-        connect_args["sslmode"] = "disable"
+        # psycopgドライバー（同期）の場合
+        if "supabase.com" in database_url:
+            connect_args["sslmode"] = "require"
+        else:
+            connect_args["sslmode"] = "disable"
     
     elif database_url.startswith("sqlite"):
         # SQLite doesn't support pool settings

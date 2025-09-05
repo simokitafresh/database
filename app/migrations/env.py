@@ -101,16 +101,13 @@ def run_migrations_online() -> None:
     # Supabase 接続の最適化
     config_section = config.get_section(config.config_ini_section) or {}
     
-    # Supabase用の接続設定
+    # Supabase用の接続設定（psycopgドライバー対応）
     if "supabase.com" in url:
         config_section.update({
             "sqlalchemy.connect_args": {
                 "connect_timeout": 30,
-                "command_timeout": 30,
-                "server_settings": {
-                    "application_name": "alembic-migration",
-                    "jit": "off"
-                }
+                "application_name": "alembic-migration",
+                "sslmode": "require"
             }
         })
     

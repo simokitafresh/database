@@ -18,7 +18,7 @@ def test_df_to_rows_returns_dicts():
     rows = df_to_rows(df, symbol="AAPL", source="yfinance")
     assert isinstance(rows, list) and len(rows) == 1
     row = rows[0]
-    assert set(row.keys()) == {"symbol", "date", "open", "high", "low", "close", "volume", "source"}
+    assert set(row.keys()) == {"symbol", "date", "open", "high", "low", "close", "volume", "source", "last_updated"}
 
 
 def test_df_to_rows_skips_nan_rows():

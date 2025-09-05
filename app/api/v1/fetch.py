@@ -76,38 +76,6 @@ async def create_fetch_job_endpoint(
     - 400: Job limit exceeded or other business logic error
     - 500: Internal server error
     """
-    
-    Starts a background job to fetch historical price data for the specified symbols
-    and date range. The job runs asynchronously and its progress can be monitored
-    using the job status endpoint.
-    
-    ## Request Body
-    
-    - **symbols**: List of stock symbols to fetch (max: 100)
-    - **date_from**: Start date for data retrieval
-    - **date_to**: End date for data retrieval (max: 10 years from start)
-    - **interval**: Data interval ('1d', '1wk', '1mo', '3mo') - default: '1d'
-    - **force**: Force refresh existing data - default: false
-    - **priority**: Job priority ('low', 'normal', 'high') - default: 'normal'
-    
-    ## Response
-    
-    Returns the created job ID and initial status. Use the job status endpoint
-    to monitor progress and results.
-    
-    ## Example
-    
-    ```json
-    {
-        "symbols": ["AAPL", "MSFT", "GOOGL"],
-        "date_from": "2024-01-01",
-        "date_to": "2024-12-31",
-        "interval": "1d",
-        "force": false,
-        "priority": "normal"
-    }
-    ```
-    """
     try:
         # Create the job
         job_id = await create_fetch_job(session, request)

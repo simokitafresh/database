@@ -57,23 +57,6 @@ async def get_coverage(
     - Only symbols with data: `GET /v1/coverage?has_data=true`
     - Sorted by last update: `GET /v1/coverage?sort_by=last_updated&order=desc`
     """
-    
-    ## Parameters
-    
-    - **page**: Page number starting from 1
-    - **page_size**: Number of items per page (1-1000)
-    - **q**: Search for symbols or company names (case-insensitive partial match)
-    - **sort_by**: Field to sort by (symbol, name, data_start, data_end, etc.)
-    - **order**: Sort order - 'asc' for ascending, 'desc' for descending
-    - **has_data**: Filter symbols with data (true) or without data (false)
-    - **start_after**: Show only symbols with data starting after this date
-    - **end_before**: Show only symbols with data ending before this date
-    - **updated_after**: Show only symbols updated after this timestamp
-    
-    ## Response
-    
-    Returns coverage information with pagination metadata and query performance stats.
-    """
     try:
         # Validate sort field
         valid_sort_fields = [

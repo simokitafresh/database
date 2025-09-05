@@ -19,3 +19,13 @@ services:
         value: "4"
       - key: CORS_ALLOW_ORIGINS
         value: "https://your-frontend.example"
+      - key: DB_POOL_SIZE
+        value: "3"
+      - key: DB_MAX_OVERFLOW
+        value: "2"
+      - key: DB_POOL_RECYCLE
+        value: "1800"
+      - key: GUNICORN_TIMEOUT
+        value: "180"
+      - key: WEB_CONCURRENCY
+        value: "2"

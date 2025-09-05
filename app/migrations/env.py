@@ -97,8 +97,28 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     url = _get_db_url()
+    
+    # Supabase 接続の最適化
+    config_section = config.get_section(config.config_ini_section) or {}
+    
+    # Supabase用の接続設定
+    if "supabase.com" in url:
+        config_section.update({
+            "sqlalchemy.pool_timeout": "30",
+            "sqlalchemy.pool_recycle": "1800",
+            "sqlalchemy.pool_pre_ping": "true",
+            "sqlalchemy.connect_args": {
+                "connect_timeout": 30,
+                "command_timeout": 30,
+                "server_settings": {
+                    "application_name": "alembic-migration",
+                    "jit": "off"
+                }
+            }
+        })
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
+        config_section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
         url=url,

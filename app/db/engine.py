@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 
 def _normalize_asyncpg_dsn(dsn: str) -> tuple[str, bool]:
@@ -37,10 +37,10 @@ def _normalize_asyncpg_dsn(dsn: str) -> tuple[str, bool]:
 
 def create_engine_and_sessionmaker(
     database_url: str,
-    pool_size: int = 20,
-    max_overflow: int = 10,
+    pool_size: int = 5,  # Reduced for cloud deployment
+    max_overflow: int = 5,  # Reduced for cloud deployment
     pool_pre_ping: bool = True,
-    pool_recycle: int = 3600,
+    pool_recycle: int = 1800,  # Reduced to 30 minutes for cloud
     echo: bool = False
 ) -> Tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     """Create async SQLAlchemy engine and session factory with optimized pool settings.
@@ -67,33 +67,61 @@ def create_engine_and_sessionmaker(
         connect_args["prepared_statement_name_func"] = (
             lambda: f"__asyncpg_{uuid.uuid4()}__"
         )
+        
+        # Supabase接続の最適化
+        if "supabase.com" in database_url:
+            connect_args.update({
+                "server_settings": {
+                    "application_name": "stock-api",
+                    "jit": "off"  # JITを無効にして安定性向上
+                },
+                "command_timeout": 30,  # コマンドタイムアウト
+                "server_lifetime": 600,  # サーバーライフタイム
+            })
+        
         if ssl_required:
             connect_args.setdefault("ssl", True)
         
-        # Use default pool for better performance in production
-        # Only use NullPool for development or with connection poolers like PgBouncer
-        if "pgbouncer" in database_url.lower() or pool_size <= 1:
+        # Use NullPool for cloud deployment with connection poolers
+        if "supabase.com" in database_url or "pgbouncer" in database_url.lower() or pool_size <= 1:
             poolclass = NullPool
         
     elif database_url.startswith("postgresql+psycopg://"):
         connect_args["sslmode"] = "disable"
+    
+    elif database_url.startswith("sqlite"):
+        # SQLite doesn't support pool settings
+        poolclass = None
+        pool_size = None
+        max_overflow = None
 
     # Engine configuration with optimized pool settings
     engine_kwargs = {
         "connect_args": connect_args,
         "echo": echo,
-        "pool_pre_ping": pool_pre_ping,
-        "pool_recycle": pool_recycle,
     }
     
-    # Add pool settings only if not using NullPool
-    if poolclass != NullPool:
+    # Add pool settings only for databases that support them
+    if not database_url.startswith("sqlite"):
         engine_kwargs.update({
-            "pool_size": pool_size,
-            "max_overflow": max_overflow,
+            "pool_pre_ping": pool_pre_ping,
+            "pool_recycle": pool_recycle,
         })
+        
+        # Add pool settings only if not using NullPool
+        if poolclass != NullPool:
+            engine_kwargs.update({
+                "pool_size": pool_size,
+                "max_overflow": max_overflow,
+            })
+        else:
+            engine_kwargs["poolclass"] = poolclass
     else:
-        engine_kwargs["poolclass"] = poolclass
+        # SQLite-specific settings
+        engine_kwargs.update({
+            "poolclass": StaticPool,
+            "connect_args": {**connect_args, "check_same_thread": False}
+        })
 
     engine = create_async_engine(database_url, **engine_kwargs)
     

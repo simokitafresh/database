@@ -112,77 +112,79 @@ async def ensure_coverage(
     with weekday-aware gap detection and fetches the minimal range required to
     bring the database up to date including ``refetch_days`` worth of recent
     history.
+    
+    Note: This function does not manage transactions. The caller should
+    ensure proper transaction management.
     """
 
     logger = logging.getLogger(__name__)
     for symbol in symbols:
-        # 1シンボルごとにトランザクションを開始し、アドバイザリロック取得→欠損判定→取得→UPSERT→コミット
-        async with session.begin():
-            await with_symbol_lock(session, symbol)
+        # アドバイザリロック取得→欠損判定→取得→UPSERT（トランザクション管理は呼び出し側に委ねる）
+        await with_symbol_lock(session, symbol)
 
-            cov = await _get_coverage(session, symbol, date_from, date_to)
+        cov = await _get_coverage(session, symbol, date_from, date_to)
 
-            last_date: Optional[date] = cov.get("last_date")
-            first_date: Optional[date] = cov.get("first_date")
-            has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
-            first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
+        last_date: Optional[date] = cov.get("last_date")
+        first_date: Optional[date] = cov.get("first_date")
+        has_gaps: bool = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
+        first_missing_weekday: Optional[date] = cov.get("first_missing_weekday")
 
-            logger.debug(
-                "coverage result",
-                extra=dict(
-                    symbol=symbol,
-                    date_from=str(date_from),
-                    date_to=str(date_to),
-                    first_date=str(first_date) if first_date else None,
-                    last_date=str(last_date) if last_date else None,
-                    has_gaps=has_gaps,
-                    first_missing_weekday=str(first_missing_weekday)
-                    if first_missing_weekday
-                    else None,
-                ),
-            )
+        logger.debug(
+            "coverage result",
+            extra=dict(
+                symbol=symbol,
+                date_from=str(date_from),
+                date_to=str(date_to),
+                first_date=str(first_date) if first_date else None,
+                last_date=str(last_date) if last_date else None,
+                has_gaps=has_gaps,
+                first_missing_weekday=str(first_missing_weekday)
+                if first_missing_weekday
+                else None,
+            ),
+        )
 
-            if last_date:
-                c1 = max(date_from, last_date - timedelta(days=refetch_days))
+        if last_date:
+            c1 = max(date_from, last_date - timedelta(days=refetch_days))
+        else:
+            c1 = date_from
+
+        if has_gaps:
+            if first_missing_weekday:
+                c2 = max(date_from, first_missing_weekday)
             else:
-                c1 = date_from
+                c2 = date_from
+        else:
+            c2 = None
 
-            if has_gaps:
-                if first_missing_weekday:
-                    c2 = max(date_from, first_missing_weekday)
-                else:
-                    c2 = date_from
-            else:
-                c2 = None
+        c3 = date_from if (first_date and first_date > date_from) else None
 
-            c3 = date_from if (first_date and first_date > date_from) else None
+        start = min([c for c in (c1, c2, c3) if c is not None])
+        logger.debug(
+            "fetch window decided",
+            extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+        )
 
-            start = min([c for c in (c1, c2, c3) if c is not None])
+        df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
+        if df is None or df.empty:
             logger.debug(
-                "fetch window decided",
+                "yfinance returned empty frame",
                 extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
             )
-
-            df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
-            if df is None or df.empty:
-                logger.debug(
-                    "yfinance returned empty frame",
-                    extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
-                )
-                continue
-            rows = df_to_rows(df, symbol=symbol, source="yfinance")
-            if not rows:
-                logger.debug(
-                    "no valid rows after NaN filtering",
-                    extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
-                )
-                continue
-            up_sql = text(upsert_prices_sql())
-            await session.execute(up_sql, rows)
+            continue
+        rows = df_to_rows(df, symbol=symbol, source="yfinance")
+        if not rows:
             logger.debug(
-                "upserted rows",
-                extra=dict(symbol=symbol, n_rows=len(rows)),
+                "no valid rows after NaN filtering",
+                extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
             )
+            continue
+        up_sql = text(upsert_prices_sql())
+        await session.execute(up_sql, rows)
+        logger.debug(
+            "upserted rows",
+            extra=dict(symbol=symbol, n_rows=len(rows)),
+        )
 
 
 async def get_prices_resolved(

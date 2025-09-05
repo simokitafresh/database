@@ -71,10 +71,6 @@ def create_engine_and_sessionmaker(
         # Supabase接続の最適化
         if "supabase.com" in database_url:
             connect_args.update({
-                "server_settings": {
-                    "application_name": "stock-api",
-                    "jit": "off"  # JITを無効にして安定性向上
-                },
                 "command_timeout": 30,  # コマンドタイムアウト
                 "server_lifetime": 600,  # サーバーライフタイム
             })

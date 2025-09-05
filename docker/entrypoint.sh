@@ -29,16 +29,23 @@ if url.startswith('postgresql+asyncpg://'):
     url = url.replace('postgresql+asyncpg://', 'postgresql+psycopg://', 1)
 
 try:
+    # Render/Supabase環境に最適化された接続設定
+    connect_args = {
+        'connect_timeout': 30,
+        'application_name': 'entrypoint_db_test'
+    }
+    
+    # Supabaseの場合はSSL設定を追加
+    if 'supabase.com' in url or 'pooler.supabase.com' in url:
+        connect_args['sslmode'] = 'require'
+    
     engine = create_engine(
         url,
         poolclass=NullPool,
-        connect_args={
-            'connect_timeout': 30,
-            'application_name': 'db-test',
-            'server_settings': {
-                'application_name': 'entrypoint_db_test'
-            }
-        }
+        connect_args=connect_args,
+        # Render環境での接続最適化
+        pool_pre_ping=True,
+        echo=False
     )
     
     with engine.connect() as conn:

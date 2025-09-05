@@ -141,4 +141,14 @@ def create_engine_and_sessionmaker(
     return engine, session_factory
 
 
-__all__ = ["create_engine_and_sessionmaker"]
+# Alias for compatibility with existing code
+def get_async_session():
+    """Get async session factory for compatibility."""
+    from app.core.config import settings
+    _, session_factory = create_engine_and_sessionmaker(
+        database_url=str(settings.DATABASE_URL)
+    )
+    return session_factory
+
+
+__all__ = ["create_engine_and_sessionmaker", "get_async_session"]

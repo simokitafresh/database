@@ -37,4 +37,16 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-__all__ = ["get_session", "_sessionmaker_for"]
+# Alias for FastAPI dependency injection compatibility
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Alias for get_session() for FastAPI dependency injection."""
+    async for session in get_session():
+        yield session
+
+
+def get_settings():
+    """Get application settings for dependency injection."""
+    return settings
+
+
+__all__ = ["get_session", "get_db", "get_settings", "_sessionmaker_for"]

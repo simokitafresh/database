@@ -43,4 +43,8 @@ def configure_logging(level: int | str = logging.INFO) -> None:
     root.setLevel(level)
 
 
-__all__ = ["configure_logging"]
+# Get logger instance for use in other modules
+logger = logging.getLogger(__name__)
+
+
+__all__ = ["configure_logging", "logger"]

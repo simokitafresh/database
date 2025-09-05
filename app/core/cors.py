@@ -57,4 +57,12 @@ def create_cors_middleware(settings: Settings) -> Optional[MiddlewareConfig]:
     return CORSMiddleware, kwargs
 
 
-__all__ = ["create_cors_middleware"]
+def setup_cors(app, settings: Settings):
+    """Setup CORS middleware on the FastAPI application."""
+    cors_config = create_cors_middleware(settings)
+    if cors_config:
+        middleware_class, kwargs = cors_config
+        app.add_middleware(middleware_class, **kwargs)
+
+
+__all__ = ["create_cors_middleware", "setup_cors"]

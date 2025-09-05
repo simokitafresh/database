@@ -32,4 +32,9 @@ def get_request_id() -> str | None:
     return request_id_ctx_var.get()
 
 
-__all__ = ["RequestIDMiddleware", "get_request_id"]
+def setup_middleware(app):
+    """Setup middleware on the FastAPI application."""
+    app.add_middleware(RequestIDMiddleware)
+
+
+__all__ = ["RequestIDMiddleware", "get_request_id", "setup_middleware"]

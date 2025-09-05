@@ -2,10 +2,29 @@
 
 Yahoo Finance 由来の調整済み株価（OHLCV）をPostgreSQLへ保存し、FastAPIで提供するAPI。1ホップのシンボル変更（例: FB→META）を透過的に解決し、直近N日（既定30）の再取得で分割/配当の遅延反映にも対応します。
 
-- エンドポイント: `/healthz`, `/v1/symbols`, `/v1/prices`, `/v1/metrics`
-- 仕様・DDL: `architecture.md`
-- マイグレーション: Alembic（起動時に `alembic upgrade head` 実行）
-- デプロイ: Docker + Render
+- **メインエンドポイント**: `/healthz`, `/v1/symbols`, `/v1/prices` 
+- **カバレッジ管理**: `/v1/coverage`, `/v1/coverage/export` - データカバレッジ情報とCSV出力
+- **バックグラウンドジョブ**: `/v1/fetch` - 非同期データ取得ジョブ管理
+- **仕様・DDL**: `architecture.md`
+- **マイグレーション**: Alembic（起動時に `alembic upgrade head` 実行）
+- **デプロイ**: Docker + Render
+
+## 主要機能
+
+### 📊 データカバレッジ管理
+- シンボルごとのデータ可用性とカバレッジ範囲を提供
+- フィルタリング・検索・ページネーション対応
+- CSV エクスポート機能で大量データを効率的に出力
+
+### ⚡ バックグラウンドジョブ処理  
+- 複数シンボルの大量データ取得を非同期で実行
+- ジョブの作成・監視・キャンセル機能
+- プログレストラッキングと詳細なステータス管理
+
+### 🚀 パフォーマンス最適化
+- クエリオプティマイザーによる SQL クエリ最適化
+- コネクションプール調整による同時接続性能向上
+- バッチ処理による大量データ処理効率化
 
 ## クイックスタート（ローカル）
 
@@ -65,6 +84,58 @@ uvicorn app.main:app --reload
 - 注意点
   - `app/migrations/env.py` が `postgresql+asyncpg://` を `postgresql+psycopg://` に自動置換するため、`DATABASE_URL` のみでもマイグレーションは動作します。
   - 本番で `CORS_ALLOW_ORIGINS=*` は避け、必要なオリジンを列挙してください。
+
+## API使用例
+
+### カバレッジ情報取得
+```bash
+# 全シンボルのカバレッジ情報を取得
+curl "http://localhost:8000/v1/coverage"
+
+# AAPLを検索
+curl "http://localhost:8000/v1/coverage?q=AAPL"
+
+# データのあるシンボルのみを取得
+curl "http://localhost:8000/v1/coverage?has_data=true"
+
+# CSVファイルとしてエクスポート
+curl "http://localhost:8000/v1/coverage/export" -o coverage.csv
+```
+
+### バックグラウンドジョブ管理
+```bash
+# データ取得ジョブを作成
+curl -X POST "http://localhost:8000/v1/fetch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbols": ["AAPL", "MSFT", "GOOGL"],
+    "date_from": "2024-01-01", 
+    "date_to": "2024-12-31",
+    "interval": "1d",
+    "priority": "normal"
+  }'
+
+# ジョブ状態を確認
+curl "http://localhost:8000/v1/fetch/{job_id}"
+
+# 全ジョブ一覧を取得
+curl "http://localhost:8000/v1/fetch"
+
+# ジョブをキャンセル
+curl -X POST "http://localhost:8000/v1/fetch/{job_id}/cancel"
+```
+
+### 価格データ取得
+```bash
+# AAPL の直近30日分の価格データ
+curl "http://localhost:8000/v1/prices?symbol=AAPL"
+
+# 期間指定で取得
+curl "http://localhost:8000/v1/prices?symbol=AAPL&date_from=2024-01-01&date_to=2024-12-31"
+
+# ページネーション対応
+curl "http://localhost:8000/v1/prices?symbol=AAPL&page=2&page_size=100"
+```
 
 ## 開発（テスト/品質）
 

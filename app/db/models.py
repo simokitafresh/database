@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy import Index
+from sqlalchemy.dialects import postgresql
 
 from .base import Base
 
@@ -74,3 +75,25 @@ class Price(Base):
     last_updated = sa.Column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
+
+
+class FetchJob(Base):
+    """Background data fetch job tracking."""
+
+    __tablename__ = "fetch_jobs"
+
+    job_id = sa.Column(sa.String(50), primary_key=True)
+    status = sa.Column(sa.String(20), nullable=False)
+    symbols = sa.Column(postgresql.ARRAY(sa.String), nullable=False)
+    date_from = sa.Column(sa.Date, nullable=False)
+    date_to = sa.Column(sa.Date, nullable=False)
+    interval = sa.Column(sa.String(10), nullable=False, default='1d')
+    force_refresh = sa.Column(sa.Boolean, nullable=False, default=False)
+    priority = sa.Column(sa.String(10), nullable=False, default='normal')
+    progress = sa.Column(sa.JSON, nullable=True)
+    results = sa.Column(sa.JSON, nullable=True)
+    errors = sa.Column(sa.JSON, nullable=True)
+    created_at = sa.Column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    started_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
+    completed_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
+    created_by = sa.Column(sa.String(100), nullable=True)

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date
-from typing import List
+from datetime import date, datetime
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 from app.api.deps import get_session  # AsyncSession 依存性
+from app.api.errors import SymbolNotFoundError, DatabaseError, raise_http_error
 from app.core.config import settings
 from app.db import queries
 from app.schemas.prices import PriceRowOut
@@ -90,4 +94,161 @@ async def get_prices(
     return rows
 
 
-__all__ = ["router", "get_prices"]
+@router.delete("/prices/{symbol}")
+async def delete_prices(
+    symbol: str,
+    date_from: Optional[date] = Query(None, description="Start date for deletion (inclusive)"),
+    date_to: Optional[date] = Query(None, description="End date for deletion (inclusive)"),
+    confirm: bool = Query(False, description="Confirmation flag to prevent accidental deletion"),
+    session: AsyncSession = Depends(get_session)
+) -> Dict[str, Any]:
+    """
+    Delete price data for a specific symbol.
+    
+    **⚠️ WARNING: This operation permanently deletes data and cannot be undone!**
+    
+    Deletes price records for the specified symbol within the given date range.
+    If no date range is specified, ALL data for the symbol will be deleted.
+    
+    ## Path Parameters
+    
+    - **symbol**: The symbol to delete data for (will be normalized)
+    
+    ## Query Parameters
+    
+    - **date_from**: Start date for deletion (optional)
+    - **date_to**: End date for deletion (optional)  
+    - **confirm**: Must be set to `true` to confirm the deletion
+    
+    ## Examples
+    
+    Delete all data for AAPL:
+    ```
+    DELETE /v1/prices/AAPL?confirm=true
+    ```
+    
+    Delete AAPL data for 2024:
+    ```
+    DELETE /v1/prices/AAPL?date_from=2024-01-01&date_to=2024-12-31&confirm=true
+    ```
+    
+    ## Response
+    
+    Returns information about the deletion including the number of rows deleted.
+    """
+    try:
+        # Normalize symbol
+        normalized_symbol = normalize_symbol(symbol)
+        
+        # Require confirmation
+        if not confirm:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "CONFIRMATION_REQUIRED",
+                        "message": "Deletion requires confirmation. Set 'confirm=true' to proceed.",
+                        "details": {
+                            "symbol": normalized_symbol,
+                            "date_from": date_from.isoformat() if date_from else None,
+                            "date_to": date_to.isoformat() if date_to else None,
+                            "warning": "This operation permanently deletes data and cannot be undone!"
+                        }
+                    }
+                }
+            )
+        
+        # Validate date range
+        if date_from and date_to and date_from > date_to:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "INVALID_DATE_RANGE",
+                        "message": "date_from must be before or equal to date_to",
+                        "details": {
+                            "date_from": date_from.isoformat(),
+                            "date_to": date_to.isoformat()
+                        }
+                    }
+                }
+            )
+        
+        # Build delete query
+        query = "DELETE FROM prices WHERE symbol = :symbol"
+        params = {"symbol": normalized_symbol}
+        
+        if date_from:
+            query += " AND date >= :date_from"
+            params["date_from"] = date_from
+        
+        if date_to:
+            query += " AND date <= :date_to"
+            params["date_to"] = date_to
+        
+        # Log the deletion attempt
+        logger.warning(
+            f"Price data deletion requested for symbol {normalized_symbol}",
+            extra={
+                "symbol": normalized_symbol,
+                "date_from": str(date_from) if date_from else None,
+                "date_to": str(date_to) if date_to else None,
+                "query": query,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        # Execute deletion
+        result = await session.execute(text(query), params)
+        deleted_rows = result.rowcount
+        
+        # Commit the transaction
+        await session.commit()
+        
+        # Log successful deletion
+        logger.warning(
+            f"Price data deleted: {deleted_rows} rows for symbol {normalized_symbol}",
+            extra={
+                "symbol": normalized_symbol,
+                "deleted_rows": deleted_rows,
+                "date_from": str(date_from) if date_from else None,
+                "date_to": str(date_to) if date_to else None,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+        
+        return {
+            "symbol": normalized_symbol,
+            "deleted_rows": deleted_rows,
+            "date_range": {
+                "from": date_from.isoformat() if date_from else None,
+                "to": date_to.isoformat() if date_to else None
+            },
+            "deleted_at": datetime.utcnow().isoformat(),
+            "message": f"Successfully deleted {deleted_rows} price records"
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log error and rollback
+        logger.error(f"Error deleting prices for {symbol}: {e}", exc_info=True)
+        await session.rollback()
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": {
+                    "code": "DELETION_ERROR",
+                    "message": "Failed to delete price data",
+                    "details": {
+                        "symbol": symbol,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                }
+            }
+        )
+
+
+__all__ = ["router", "get_prices", "delete_prices"]

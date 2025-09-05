@@ -20,7 +20,7 @@ test_db_connection() {
     if python -c "
 import os
 import sys
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 # Alembic用のsync URLに変換
@@ -34,12 +34,15 @@ try:
         poolclass=NullPool,
         connect_args={
             'connect_timeout': 30,
-            'application_name': 'db-test'
+            'application_name': 'db-test',
+            'server_settings': {
+                'application_name': 'entrypoint_db_test'
+            }
         }
     )
     
     with engine.connect() as conn:
-        result = conn.execute('SELECT 1').scalar()
+        result = conn.execute(text('SELECT 1')).scalar()
         if result == 1:
             print('[entrypoint] Database connection successful')
             sys.exit(0)
@@ -48,7 +51,9 @@ try:
             sys.exit(1)
             
 except Exception as e:
-    print(f'[entrypoint] Database connection failed: {e}')
+    print(f'[entrypoint] Database connection failed: {str(e)}')
+    import traceback
+    print(f'[entrypoint] Error details: {traceback.format_exc()}')
     sys.exit(1)
 " 2>/dev/null; then
       echo "[entrypoint] Database connection established"

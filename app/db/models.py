@@ -21,6 +21,9 @@ class Symbol(Base):
     is_active = sa.Column(sa.Boolean, nullable=True)
     first_date = sa.Column(sa.Date, nullable=True)
     last_date = sa.Column(sa.Date, nullable=True)
+    created_at = sa.Column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
 
 
 class SymbolChange(Base):

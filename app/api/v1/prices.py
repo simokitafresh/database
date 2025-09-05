@@ -107,28 +107,29 @@ async def get_prices(
         return []
 
     # --- auto-registration (if enabled) ---
-    if settings.ENABLE_AUTO_REGISTRATION:
-        logger.info(f"Checking auto-registration for symbols: {symbols_list}")
-        await ensure_symbols_registered(session, symbols_list)
+    async with session.begin():
+        if settings.ENABLE_AUTO_REGISTRATION:
+            logger.info(f"Checking auto-registration for symbols: {symbols_list}")
+            await ensure_symbols_registered(session, symbols_list)
 
-    # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
-    # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
-    t0 = time.perf_counter()
-    await queries.ensure_coverage(
-        session=session,
-        symbols=symbols_list,
-        date_from=date_from,
-        date_to=date_to,
-        refetch_days=settings.YF_REFETCH_DAYS,
-    )
+        # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
+        # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
+        t0 = time.perf_counter()
+        await queries.ensure_coverage(
+            session=session,
+            symbols=symbols_list,
+            date_from=date_from,
+            date_to=date_to,
+            refetch_days=settings.YF_REFETCH_DAYS,
+        )
 
-    # 2) 透過解決済み結果を取得
-    rows = await queries.get_prices_resolved(
-        session=session,
-        symbols=symbols_list,
-        date_from=date_from,
-        date_to=date_to,
-    )
+        # 2) 透過解決済み結果を取得
+        rows = await queries.get_prices_resolved(
+            session=session,
+            symbols=symbols_list,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
     if len(rows) > settings.API_MAX_ROWS:
         raise HTTPException(status_code=413, detail="response too large")
@@ -303,4 +304,35 @@ async def delete_prices(
         )
 
 
-__all__ = ["router", "get_prices", "delete_prices"]
+@router.get("/prices/count/{symbol}")
+async def get_price_count(
+    symbol: str,
+    session=Depends(get_session),
+):
+    """Get the count of price records for a symbol (for debugging data persistence)."""
+    from sqlalchemy import text
+    
+    result = await session.execute(
+        text("SELECT COUNT(*) FROM prices WHERE symbol = :symbol"),
+        {"symbol": symbol.upper()}
+    )
+    count = result.scalar()
+    
+    # Also get date range
+    date_result = await session.execute(
+        text("SELECT MIN(date) as min_date, MAX(date) as max_date FROM prices WHERE symbol = :symbol"),
+        {"symbol": symbol.upper()}
+    )
+    date_row = date_result.fetchone()
+    
+    return {
+        "symbol": symbol.upper(),
+        "count": count,
+        "date_range": {
+            "min": date_row.min_date.isoformat() if date_row.min_date else None,
+            "max": date_row.max_date.isoformat() if date_row.max_date else None
+        } if date_row else None
+    }
+
+
+__all__ = ["router", "get_prices", "delete_prices", "get_price_count"]

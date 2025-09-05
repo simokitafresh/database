@@ -30,11 +30,22 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
     The sessionmaker is created lazily per DSN and cached so tests or runtime
     configuration can swap ``settings.DATABASE_URL``.
+    
+    Automatically commits transactions on success or rollback on error.
     """
 
     SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
     async with SessionLocal() as session:
-        yield session
+        try:
+            yield session
+            # Auto-commit the transaction after successful request processing
+            if session.in_transaction():
+                await session.commit()
+        except Exception:
+            # Auto-rollback on any error
+            if session.in_transaction():
+                await session.rollback()
+            raise
 
 
 # Alias for FastAPI dependency injection compatibility

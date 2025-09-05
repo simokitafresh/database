@@ -111,13 +111,74 @@ if ! alembic upgrade head; then
   
   # Check if alembic_version table exists and has conflicting data
   echo "[entrypoint] Checking for migration conflicts..."
+  python -c "
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
+
+url = os.environ['ALEMBIC_DATABASE_URL']
+if '=' in url and url.startswith(('ALEMBIC_DATABASE_URL=', 'DATABASE_URL=')):
+    url = url.split('=', 1)[1]
+url = url.strip()
+
+try:
+    connect_args = {'connect_timeout': 30, 'application_name': 'migration_debug'}
+    if 'supabase.com' in url or 'pooler.supabase.com' in url:
+        connect_args['sslmode'] = 'require'
+    
+    engine = create_engine(url, poolclass=NullPool, connect_args=connect_args)
+    
+    with engine.connect() as conn:
+        # Check if alembic_version table exists
+        result = conn.execute(text(\"\"\"
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_name = 'alembic_version'
+        \"\"\")).scalar()
+        
+        if result > 0:
+            # Show current version
+            version = conn.execute(text('SELECT version_num FROM alembic_version')).scalar()
+            print(f'[entrypoint] Current alembic version in DB: {repr(version)}')
+            
+            # This is the problematic version causing issues
+            if version and ('_' in str(version) or len(str(version)) > 10):
+                print(f'[entrypoint] PROBLEM DETECTED: Version contains filename instead of revision ID')
+        else:
+            print('[entrypoint] No alembic_version table found')
+            
+except Exception as e:
+    print(f'[entrypoint] Debug check failed: {e}')
+"
   
-  # Try to stamp current state to head (reset to latest)
-  echo "[entrypoint] Resetting migration state to head..."
-  alembic stamp head
+  # Clear alembic_version table completely to force fresh start
+  echo "[entrypoint] Clearing corrupted migration state..."
+  python -c "
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
+
+url = os.environ['ALEMBIC_DATABASE_URL']
+if '=' in url and url.startswith(('ALEMBIC_DATABASE_URL=', 'DATABASE_URL=')):
+    url = url.split('=', 1)[1]
+url = url.strip()
+
+try:
+    connect_args = {'connect_timeout': 30, 'application_name': 'migration_reset'}
+    if 'supabase.com' in url or 'pooler.supabase.com' in url:
+        connect_args['sslmode'] = 'require'
+    
+    engine = create_engine(url, poolclass=NullPool, connect_args=connect_args)
+    
+    with engine.connect() as conn:
+        conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
+        conn.commit()
+        print('[entrypoint] Cleared alembic_version table')
+except Exception as e:
+    print(f'[entrypoint] Warning: Could not clear alembic_version table: {e}')
+"
   
-  # Now try upgrade again
-  echo "[entrypoint] Retrying migration upgrade..."
+  # Now try upgrade again (this will create fresh alembic_version table)
+  echo "[entrypoint] Creating fresh migration state..."
   alembic upgrade head
 fi
 

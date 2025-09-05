@@ -25,8 +25,22 @@ from sqlalchemy.pool import NullPool
 
 # Alembic用のsync URLに変換
 url = os.environ['ALEMBIC_DATABASE_URL']
+
+# デバッグ: 環境変数の内容を確認
+print(f'[DEBUG] Raw ALEMBIC_DATABASE_URL: {repr(url)}')
+
+# 環境変数のプレフィックスが含まれている場合の修正
+if '=' in url and url.startswith(('ALEMBIC_DATABASE_URL=', 'DATABASE_URL=')):
+    url = url.split('=', 1)[1]
+    print(f'[DEBUG] Cleaned URL after split: {repr(url)}')
+
+# 空白や改行の除去
+url = url.strip()
+print(f'[DEBUG] Final URL: {repr(url)}')
+
 if url.startswith('postgresql+asyncpg://'):
     url = url.replace('postgresql+asyncpg://', 'postgresql+psycopg://', 1)
+    print(f'[DEBUG] URL after driver conversion: {repr(url)}')
 
 try:
     # Render/Supabase環境に最適化された接続設定

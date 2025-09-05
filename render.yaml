@@ -9,6 +9,8 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: ALEMBIC_DATABASE_URL
+        sync: false
       - key: API_MAX_SYMBOLS
         value: "50"
       - key: API_MAX_ROWS

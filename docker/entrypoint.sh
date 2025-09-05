@@ -170,16 +170,85 @@ try:
     engine = create_engine(url, poolclass=NullPool, connect_args=connect_args)
     
     with engine.connect() as conn:
-        conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
-        conn.commit()
-        print('[entrypoint] Cleared alembic_version table')
+        # Check if main tables already exist (indicating partial deployment)
+        tables_exist = conn.execute(text(\"\"\"
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_name IN ('symbols', 'prices')
+        \"\"\")).scalar()
+        
+        if tables_exist > 0:
+            print(f'[entrypoint] Found {tables_exist} existing tables - database appears to be partially initialized')
+            # Don't drop alembic_version in this case, we'll stamp instead
+        else:
+            print('[entrypoint] No main tables found - safe to reset completely')
+            conn.execute(text('DROP TABLE IF EXISTS alembic_version'))
+            conn.commit()
+            print('[entrypoint] Cleared alembic_version table')
+            
 except Exception as e:
     print(f'[entrypoint] Warning: Could not clear alembic_version table: {e}')
 "
   
-  # Now try upgrade again (this will create fresh alembic_version table)
-  echo "[entrypoint] Creating fresh migration state..."
-  alembic upgrade head
+  # Check if we have existing schema and should stamp instead of upgrade
+  echo "[entrypoint] Checking if we should stamp existing schema..."
+  python -c "
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
+
+url = os.environ['ALEMBIC_DATABASE_URL']
+if '=' in url and url.startswith(('ALEMBIC_DATABASE_URL=', 'DATABASE_URL=')):
+    url = url.split('=', 1)[1]
+url = url.strip()
+
+should_stamp = False
+try:
+    connect_args = {'connect_timeout': 30, 'application_name': 'schema_check'}
+    if 'supabase.com' in url or 'pooler.supabase.com' in url:
+        connect_args['sslmode'] = 'require'
+    
+    engine = create_engine(url, poolclass=NullPool, connect_args=connect_args)
+    
+    with engine.connect() as conn:
+        # Check for main tables that indicate schema is already present
+        essential_tables = ['symbols', 'prices', 'fetch_jobs']
+        existing_tables = []
+        
+        for table in essential_tables:
+            count = conn.execute(text(f\"\"\"
+                SELECT COUNT(*) FROM information_schema.tables 
+                WHERE table_name = '{table}'
+            \"\"\")).scalar()
+            if count > 0:
+                existing_tables.append(table)
+        
+        if len(existing_tables) >= 2:  # If we have most of the schema
+            should_stamp = True
+            print(f'[entrypoint] Found existing schema with tables: {existing_tables}')
+            print('[entrypoint] Will stamp to head instead of running migrations')
+        else:
+            print(f'[entrypoint] Limited existing schema: {existing_tables}')
+            print('[entrypoint] Will run normal migrations')
+            
+except Exception as e:
+    print(f'[entrypoint] Schema check failed: {e}')
+
+# Write result to file for shell script
+with open('/tmp/should_stamp', 'w') as f:
+    f.write('yes' if should_stamp else 'no')
+"
+  
+  # Read the result and decide how to proceed
+  SHOULD_STAMP=$(cat /tmp/should_stamp 2>/dev/null || echo "no")
+  
+  if [ "$SHOULD_STAMP" = "yes" ]; then
+    echo "[entrypoint] Stamping existing schema as head..."
+    alembic stamp head
+    echo "[entrypoint] Schema stamped successfully"
+  else
+    echo "[entrypoint] Creating fresh migration state..."
+    alembic upgrade head
+  fi
 fi
 
 echo "[entrypoint] Starting gunicorn (UvicornWorker)"

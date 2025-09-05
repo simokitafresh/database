@@ -144,47 +144,97 @@ async def ensure_coverage(
             ),
         )
 
-        if last_date:
-            c1 = max(date_from, last_date - timedelta(days=refetch_days))
-        else:
-            c1 = date_from
-
-        if has_gaps:
-            if first_missing_weekday:
-                c2 = max(date_from, first_missing_weekday)
+        # 取得範囲を決定（重複を避けるため、本当に必要な部分のみ取得）
+        fetch_ranges = []
+        
+        # 1) 最新データの再取得（refetch_days分のみ、ただし最新データが新しい場合はスキップ）
+        if last_date and date_to >= last_date:
+            # 最新データが1日以内の場合は再取得をスキップ（市場時間を考慮）
+            days_since_last = (date_to - last_date).days
+            if days_since_last > 1:  # 1日より古い場合のみ再取得
+                refetch_start = max(date_from, last_date - timedelta(days=refetch_days))
+                if refetch_start <= date_to:
+                    fetch_ranges.append((refetch_start, date_to))
+                    logger.debug(
+                        "adding recent data refetch range",
+                        extra=dict(symbol=symbol, start=str(refetch_start), end=str(date_to), days_since_last=days_since_last)
+                    )
             else:
-                c2 = date_from
-        else:
-            c2 = None
+                logger.debug(
+                    "skipping recent data refetch - data is fresh",
+                    extra=dict(symbol=symbol, last_date=str(last_date), days_since_last=days_since_last)
+                )
 
-        c3 = date_from if (first_date and first_date > date_from) else None
+        # 2) ギャップの埋め込み（欠損部分のみ）
+        if has_gaps and first_missing_weekday:
+            # ギャップの開始日から最初のデータまでの範囲
+            gap_end = first_date if first_date else date_to
+            gap_start = max(date_from, first_missing_weekday)
+            if gap_start < gap_end:
+                # 既存の範囲と重複しないように調整
+                if not fetch_ranges or gap_start < fetch_ranges[0][0]:
+                    fetch_ranges.append((gap_start, min(gap_end, date_to)))
+                    logger.debug(
+                        "adding gap fill range",
+                        extra=dict(symbol=symbol, start=str(gap_start), end=str(min(gap_end, date_to)))
+                    )
 
-        start = min([c for c in (c1, c2, c3) if c is not None])
-        logger.debug(
-            "fetch window decided",
-            extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
-        )
-
-        df = await fetch_prices_df(symbol=symbol, start=start, end=date_to)
-        if df is None or df.empty:
+        # 3) 初期データ（データベースに何もない場合）
+        if not first_date:
+            fetch_ranges.append((date_from, date_to))
             logger.debug(
-                "yfinance returned empty frame",
-                extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+                "adding initial data range",
+                extra=dict(symbol=symbol, start=str(date_from), end=str(date_to))
+            )
+
+        # 範囲をマージして重複を避ける
+        if not fetch_ranges:
+            logger.debug(
+                "no data fetch needed - database coverage is complete",
+                extra=dict(symbol=symbol)
             )
             continue
-        rows = df_to_rows(df, symbol=symbol, source="yfinance")
-        if not rows:
+
+        # 取得範囲を統合
+        fetch_ranges.sort()
+        merged_ranges = [fetch_ranges[0]]
+        for start, end in fetch_ranges[1:]:
+            last_start, last_end = merged_ranges[-1]
+            if start <= last_end + timedelta(days=1):
+                # 重複または隣接する範囲をマージ
+                merged_ranges[-1] = (last_start, max(last_end, end))
+            else:
+                merged_ranges.append((start, end))
+
+        # 各範囲について個別に取得
+        for start, end in merged_ranges:
             logger.debug(
-                "no valid rows after NaN filtering",
-                extra=dict(symbol=symbol, start=str(start), end=str(date_to)),
+                "fetching data range",
+                extra=dict(symbol=symbol, start=str(start), end=str(end))
             )
-            continue
-        up_sql = text(upsert_prices_sql())
-        await session.execute(up_sql, rows)
-        logger.debug(
-            "upserted rows",
-            extra=dict(symbol=symbol, n_rows=len(rows)),
-        )
+
+            df = await fetch_prices_df(symbol=symbol, start=start, end=end)
+            if df is None or df.empty:
+                logger.debug(
+                    "yfinance returned empty frame",
+                    extra=dict(symbol=symbol, start=str(start), end=str(end)),
+                )
+                continue
+            
+            rows = df_to_rows(df, symbol=symbol, source="yfinance")
+            if not rows:
+                logger.debug(
+                    "no valid rows after NaN filtering",
+                    extra=dict(symbol=symbol, start=str(start), end=str(end)),
+                )
+                continue
+            
+            up_sql = text(upsert_prices_sql())
+            await session.execute(up_sql, rows)
+            logger.debug(
+                "upserted rows for range",
+                extra=dict(symbol=symbol, n_rows=len(rows), start=str(start), end=str(end)),
+            )
 
 
 async def get_prices_resolved(

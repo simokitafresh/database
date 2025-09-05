@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # API settings
     API_MAX_SYMBOLS: int = 5
     API_MAX_ROWS: int = 10000
-    YF_REFETCH_DAYS: int = 30
+    YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
     YF_REQ_CONCURRENCY: int = 4
     FETCH_TIMEOUT_SECONDS: int = 8
     FETCH_MAX_RETRIES: int = 3

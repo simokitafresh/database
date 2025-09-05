@@ -1,7 +1,7 @@
 """add check constraints for prices
 
-Revision ID: 003_add_price_checks
-Revises: 002_fn_prices_resolved
+Revision ID: 003
+Revises: 002
 Create Date: 2025-08-29
 """
 

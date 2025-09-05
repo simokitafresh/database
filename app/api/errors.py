@@ -12,6 +12,8 @@ JOB_LIMIT_EXCEEDED = "JOB_LIMIT_EXCEEDED"
 INVALID_DATE_RANGE = "INVALID_DATE_RANGE"
 TOO_MANY_SYMBOLS = "TOO_MANY_SYMBOLS"
 SYMBOL_NOT_FOUND = "SYMBOL_NOT_FOUND"
+SYMBOL_NOT_EXISTS = "SYMBOL_NOT_EXISTS"
+SYMBOL_REGISTRATION_FAILED = "SYMBOL_REGISTRATION_FAILED"
 DATA_FETCH_ERROR = "DATA_FETCH_ERROR"
 EXPORT_ERROR = "EXPORT_ERROR"
 DATABASE_ERROR = "DATABASE_ERROR"
@@ -64,10 +66,36 @@ class TooManySymbolsError(HTTPException):
 
 class SymbolNotFoundError(HTTPException):
     """Exception raised when a symbol is not found."""
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, source: str = "database"):
+        if source == "yfinance":
+            message = f"Symbol '{symbol}' does not exist in Yahoo Finance"
+            code = SYMBOL_NOT_EXISTS
+        else:
+            message = f"Symbol '{symbol}' not found in database"
+            code = SYMBOL_NOT_FOUND
+            
         super().__init__(
             status_code=404,
-            detail={"code": SYMBOL_NOT_FOUND, "message": f"Symbol {symbol} not found"}
+            detail={
+                "code": code, 
+                "message": message, 
+                "symbol": symbol,
+                "source": source
+            }
+        )
+
+
+class SymbolRegistrationError(HTTPException):
+    """Exception raised when automatic symbol registration fails."""
+    def __init__(self, symbol: str, reason: str):
+        super().__init__(
+            status_code=500,
+            detail={
+                "code": SYMBOL_REGISTRATION_FAILED,
+                "message": f"Failed to auto-register symbol '{symbol}': {reason}",
+                "symbol": symbol,
+                "reason": reason
+            }
         )
 
 

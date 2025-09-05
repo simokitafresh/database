@@ -11,11 +11,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
 
 from app.api.deps import get_session  # AsyncSession 依存性
-from app.api.errors import SymbolNotFoundError, DatabaseError, raise_http_error
+from app.api.errors import SymbolNotFoundError, SymbolRegistrationError, DatabaseError, raise_http_error
 from app.core.config import settings
 from app.db import queries
 from app.schemas.prices import PriceRowOut
 from app.services.normalize import normalize_symbol
+from app.services.auto_register import auto_register_symbol
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -45,6 +46,52 @@ def _parse_and_validate_symbols(symbols_raw: str) -> List[str]:
     return uniq
 
 
+async def ensure_symbols_registered(
+    session: AsyncSession, 
+    symbols: List[str]
+) -> None:
+    """
+    Ensure all symbols are registered in the database.
+    
+    For each symbol:
+    1. Check if already exists in database
+    2. If not, validate with Yahoo Finance
+    3. If valid, register in database
+    4. If invalid, raise SymbolNotFoundError
+    
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session
+    symbols : List[str] 
+        List of normalized symbols to check/register
+        
+    Raises
+    ------
+    SymbolNotFoundError
+        If a symbol doesn't exist in Yahoo Finance
+    SymbolRegistrationError
+        If database registration fails
+    """
+    for symbol in symbols:
+        try:
+            success = await auto_register_symbol(session, symbol)
+            if success:
+                logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
+        except ValueError as e:
+            # Symbol doesn't exist in Yahoo Finance
+            logger.warning(f"Symbol validation failed: {e}")
+            raise SymbolNotFoundError(symbol, source="yfinance")
+        except RuntimeError as e:
+            # Database registration failed
+            logger.error(f"Symbol registration failed: {e}")
+            raise SymbolRegistrationError(symbol, str(e))
+        except Exception as e:
+            # Unexpected error
+            logger.error(f"Unexpected error in symbol registration for {symbol}: {e}", exc_info=True)
+            raise SymbolRegistrationError(symbol, f"Unexpected error: {str(e)}")
+
+
 @router.get("/prices", response_model=List[PriceRowOut])
 async def get_prices(
     symbols: str = Query(..., description="Comma-separated symbols"),
@@ -58,6 +105,11 @@ async def get_prices(
     symbols_list = _parse_and_validate_symbols(symbols)
     if not symbols_list:
         return []
+
+    # --- auto-registration (if enabled) ---
+    if settings.ENABLE_AUTO_REGISTRATION:
+        logger.info(f"Checking auto-registration for symbols: {symbols_list}")
+        await ensure_symbols_registered(session, symbols_list)
 
     # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
     # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）

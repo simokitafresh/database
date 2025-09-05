@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
     
+    # Auto-registration settings
+    ENABLE_AUTO_REGISTRATION: bool = True
+    AUTO_REGISTER_TIMEOUT: int = 15  # Total timeout for registration process
+    YF_VALIDATE_TIMEOUT: int = 10    # Timeout for Yahoo Finance validation
+    
     # Fetch Job Settings
     FETCH_JOB_MAX_SYMBOLS: int = 100
     FETCH_JOB_MAX_DAYS: int = 3650
@@ -48,4 +53,13 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-__all__ = ["Settings", "settings"]
+def get_settings() -> Settings:
+    """Get the application settings instance.
+    
+    Returns:
+        Settings: The application settings singleton.
+    """
+    return settings
+
+
+__all__ = ["Settings", "settings", "get_settings"]

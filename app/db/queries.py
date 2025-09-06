@@ -238,48 +238,42 @@ async def ensure_coverage(
 
 
 async def find_earliest_available_date(symbol: str, target_date: date) -> date:
-    """
-    効率的に最古の利用可能日を探索
+    """効率的に最古の利用可能日を探索（非同期対応）"""
+    logger = logging.getLogger(__name__)
 
-    Parameters
-    ----------
-    symbol : str
-        検索対象のシンボル
-    target_date : date
-        要求された開始日
+    def _sync_find_earliest() -> date:
+        """同期処理を別スレッドで実行"""
+        import yfinance as yf
+        from datetime import timedelta
 
-    Returns
-    -------
-    date
-        実際に利用可能な最古日
-    """
-    import yfinance as yf
-    from datetime import timedelta
+        test_dates = [
+            date(1970, 1, 1),
+            date(1980, 1, 1),
+            date(1990, 1, 1),
+            date(2000, 1, 1),
+            date(2010, 1, 1),
+        ]
 
-    test_dates = [
-        date(1970, 1, 1),
-        date(1980, 1, 1),
-        date(1990, 1, 1),
-        date(2000, 1, 1),
-        date(2010, 1, 1),
-    ]
+        for test_date in test_dates:
+            if test_date >= target_date:
+                try:
+                    df = yf.download(
+                        symbol,
+                        start=test_date,
+                        end=test_date + timedelta(days=30),
+                        progress=False,
+                        timeout=5
+                    )
+                    if not df.empty:
+                        return df.index[0].date()
+                except Exception as e:
+                    logger.debug(f"Test date {test_date} failed for {symbol}: {e}")
+                    continue
 
-    for test_date in test_dates:
-        if test_date >= target_date:
-            try:
-                df = yf.download(
-                    symbol,
-                    start=test_date,
-                    end=test_date + timedelta(days=30),
-                    progress=False,
-                    timeout=5
-                )
-                if not df.empty:
-                    return df.index[0].date()
-            except:
-                continue
+        return max(target_date, date(2000, 1, 1))
 
-    return max(target_date, date(2000, 1, 1))
+    # 別スレッドで実行
+    return await run_in_threadpool(_sync_find_earliest)
 
 
 async def ensure_coverage_with_auto_fetch(

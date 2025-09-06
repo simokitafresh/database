@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 import logging
-from typing import Any, List, Mapping, Optional, Sequence, cast, Dict
+from datetime import date, timedelta
+from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 
 import anyio
-from sqlalchemy import bindparam, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -92,9 +92,7 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
         """
     )
 
-    res = await session.execute(
-        sql, {"symbol": symbol, "date_from": date_from, "date_to": date_to}
-    )
+    res = await session.execute(sql, {"symbol": symbol, "date_from": date_from, "date_to": date_to})
     row = cast(Mapping[str, Any], res.mappings().first() or {})
     return dict(row)
 
@@ -112,7 +110,7 @@ async def ensure_coverage(
     with weekday-aware gap detection and fetches the minimal range required to
     bring the database up to date including ``refetch_days`` worth of recent
     history.
-    
+
     Note: This function does not manage transactions. The caller should
     ensure proper transaction management.
     """
@@ -138,15 +136,13 @@ async def ensure_coverage(
                 first_date=str(first_date) if first_date else None,
                 last_date=str(last_date) if last_date else None,
                 has_gaps=has_gaps,
-                first_missing_weekday=str(first_missing_weekday)
-                if first_missing_weekday
-                else None,
+                first_missing_weekday=str(first_missing_weekday) if first_missing_weekday else None,
             ),
         )
 
         # 取得範囲を決定（重複を避けるため、本当に必要な部分のみ取得）
         fetch_ranges = []
-        
+
         # 1) 最新データの再取得（refetch_days分のみ、ただし最新データが新しい場合はスキップ）
         if last_date and date_to >= last_date:
             # 最新データが1日以内の場合は再取得をスキップ（市場時間を考慮）
@@ -157,12 +153,19 @@ async def ensure_coverage(
                     fetch_ranges.append((refetch_start, date_to))
                     logger.debug(
                         "adding recent data refetch range",
-                        extra=dict(symbol=symbol, start=str(refetch_start), end=str(date_to), days_since_last=days_since_last)
+                        extra=dict(
+                            symbol=symbol,
+                            start=str(refetch_start),
+                            end=str(date_to),
+                            days_since_last=days_since_last,
+                        ),
                     )
             else:
                 logger.debug(
                     "skipping recent data refetch - data is fresh",
-                    extra=dict(symbol=symbol, last_date=str(last_date), days_since_last=days_since_last)
+                    extra=dict(
+                        symbol=symbol, last_date=str(last_date), days_since_last=days_since_last
+                    ),
                 )
 
         # 2) ギャップの埋め込み（欠損部分のみ）
@@ -176,7 +179,9 @@ async def ensure_coverage(
                     fetch_ranges.append((gap_start, min(gap_end, date_to)))
                     logger.debug(
                         "adding gap fill range",
-                        extra=dict(symbol=symbol, start=str(gap_start), end=str(min(gap_end, date_to)))
+                        extra=dict(
+                            symbol=symbol, start=str(gap_start), end=str(min(gap_end, date_to))
+                        ),
                     )
 
         # 3) 初期データ（データベースに何もない場合）
@@ -184,14 +189,13 @@ async def ensure_coverage(
             fetch_ranges.append((date_from, date_to))
             logger.debug(
                 "adding initial data range",
-                extra=dict(symbol=symbol, start=str(date_from), end=str(date_to))
+                extra=dict(symbol=symbol, start=str(date_from), end=str(date_to)),
             )
 
         # 範囲をマージして重複を避ける
         if not fetch_ranges:
             logger.debug(
-                "no data fetch needed - database coverage is complete",
-                extra=dict(symbol=symbol)
+                "no data fetch needed - database coverage is complete", extra=dict(symbol=symbol)
             )
             continue
 
@@ -209,8 +213,7 @@ async def ensure_coverage(
         # 各範囲について個別に取得
         for start, end in merged_ranges:
             logger.debug(
-                "fetching data range",
-                extra=dict(symbol=symbol, start=str(start), end=str(end))
+                "fetching data range", extra=dict(symbol=symbol, start=str(start), end=str(end))
             )
 
             df = await fetch_prices_df(symbol=symbol, start=start, end=end)
@@ -220,7 +223,7 @@ async def ensure_coverage(
                     extra=dict(symbol=symbol, start=str(start), end=str(end)),
                 )
                 continue
-            
+
             rows = df_to_rows(df, symbol=symbol, source="yfinance")
             if not rows:
                 logger.debug(
@@ -228,7 +231,7 @@ async def ensure_coverage(
                     extra=dict(symbol=symbol, start=str(start), end=str(end)),
                 )
                 continue
-            
+
             up_sql = text(upsert_prices_sql())
             await session.execute(up_sql, rows)
             logger.debug(
@@ -243,8 +246,9 @@ async def find_earliest_available_date(symbol: str, target_date: date) -> date:
 
     def _sync_find_earliest() -> date:
         """同期処理を別スレッドで実行"""
-        import yfinance as yf
         from datetime import timedelta
+
+        import yfinance as yf
 
         test_dates = [
             date(1970, 1, 1),
@@ -262,7 +266,7 @@ async def find_earliest_available_date(symbol: str, target_date: date) -> date:
                         start=test_date,
                         end=test_date + timedelta(days=30),
                         progress=False,
-                        timeout=5
+                        timeout=5,
                     )
                     if not df.empty:
                         return df.index[0].date()
@@ -305,11 +309,7 @@ async def ensure_coverage_with_auto_fetch(
         取得結果のメタ情報
     """
     logger = logging.getLogger(__name__)
-    result_meta = {
-        "fetched_ranges": {},
-        "row_counts": {},
-        "adjustments": {}
-    }
+    result_meta = {"fetched_ranges": {}, "row_counts": {}, "adjustments": {}}
 
     for symbol in symbols:
         await with_symbol_lock(session, symbol)
@@ -321,14 +321,31 @@ async def ensure_coverage_with_auto_fetch(
 
             actual_start = await find_earliest_available_date(symbol, date_from)
 
-            if actual_start > date_from:
-                result_meta["adjustments"][symbol] = (
-                    f"requested {date_from}, actual {actual_start}"
-                )
+            if actual_start > date_to:
                 logger.warning(
-                    f"Symbol {symbol}: Auto-adjusting date_from "
-                    f"from {date_from} to {actual_start}"
+                    f"Symbol {symbol}: No data available in requested range "
+                    f"({date_from} to {date_to}). Data starts from {actual_start}"
                 )
+                result_meta["adjustments"][symbol] = {
+                    "status": "no_data_in_range",
+                    "requested_start": str(date_from),
+                    "requested_end": str(date_to),
+                    "actual_start": str(actual_start),
+                    "message": f"Data only available from {actual_start}",
+                }
+                continue
+
+            if actual_start > date_from:
+                logger.info(
+                    f"Symbol {symbol}: Adjusting date range. "
+                    f"Requested: {date_from}, Available: {actual_start}"
+                )
+                result_meta["adjustments"][symbol] = {
+                    "status": "partial_data",
+                    "requested_start": str(date_from),
+                    "actual_start": str(actual_start),
+                    "message": "Data adjusted to available range",
+                }
 
             logger.info(f"Auto-fetching {symbol} from {actual_start} to {date_to}")
             df = await fetch_prices_df(symbol=symbol, start=actual_start, end=date_to)
@@ -341,13 +358,12 @@ async def ensure_coverage_with_auto_fetch(
 
                     result_meta["fetched_ranges"][symbol] = {
                         "from": str(actual_start),
-                        "to": str(date_to)
+                        "to": str(date_to),
                     }
                     result_meta["row_counts"][symbol] = len(rows)
 
                     logger.info(
-                        f"Saved {len(rows)} rows for {symbol} "
-                        f"({actual_start} to {date_to})"
+                        f"Saved {len(rows)} rows for {symbol} " f"({actual_start} to {date_to})"
                     )
 
     return result_meta
@@ -368,9 +384,7 @@ async def get_prices_resolved(
     out: List[dict] = []
     sql = text("SELECT * FROM get_prices_resolved(:symbol, :date_from, :date_to)")
     for s in symbols:
-        res = await session.execute(
-            sql, {"symbol": s, "date_from": date_from, "date_to": date_to}
-        )
+        res = await session.execute(sql, {"symbol": s, "date_from": date_from, "date_to": date_to})
         out.extend([dict(m) for m in res.mappings().all()])
     out.sort(key=lambda r: (r["date"], r["symbol"]))
     return out

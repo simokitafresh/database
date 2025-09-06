@@ -350,27 +350,27 @@ echo "=== 検証完了 ==="
 ## 📋 実装チェックリスト
 
 ### 緊急修正
-- [ ] fetch_worker.py L229-230の`session.begin()`削除
-- [ ] インデント修正
+- [x] fetch_worker.py L229-230の`session.begin()`削除
+- [x] インデント修正
 
 ### P4実装
-- [ ] `app/utils/`ディレクトリ作成
-- [ ] `date_utils.py`作成
-- [ ] `binary_search_yf_start_date`関数追加
-- [ ] `ensure_coverage_unified`関数作成
+- [x] `app/utils/`ディレクトリ作成
+- [x] `date_utils.py`作成
+- [x] `binary_search_yf_start_date`関数追加
+- [x] `ensure_coverage_unified`関数作成
 
 ### P2完全実装
-- [ ] `ensure_coverage_with_auto_fetch`をリダイレクト
+- [x] `ensure_coverage_with_auto_fetch`をリダイレクト
 
 ### テスト
-- [ ] `test_fetch_worker_transaction.py`作成
-- [ ] `test_date_boundary.py`作成
+- [x] `test_fetch_worker_transaction.py`作成
+- [x] `test_date_boundary.py`作成
 - [ ] その他のテスト作成
 
 ### 最終確認
-- [ ] 全構文チェック通過
-- [ ] 全インポート成功
-- [ ] 全テスト通過
+- [x] 全構文チェック通過
+- [x] 全インポート成功
+- [x] 全テスト通過
 
 ## 🚀 実装優先順位
 

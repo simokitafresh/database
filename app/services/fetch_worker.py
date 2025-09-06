@@ -241,24 +241,24 @@ async def fetch_symbol_data(
         )
 
         async with SessionLocal() as session:
-            async with session.begin():
-                inserted_count, updated_count = await upsert_prices(
-                    session, rows_to_upsert, force_update=force
-                )
+            # async with session.begin():  # 削除
+            inserted_count, updated_count = await upsert_prices(
+                session, rows_to_upsert, force_update=force
+            )
 
-                total_rows = inserted_count + updated_count
-                logger.info(
-                    f"Upserted {total_rows} rows for {symbol} ({inserted_count} new, {updated_count} updated)"
-                )
+            total_rows = inserted_count + updated_count
+            logger.info(
+                f"Upserted {total_rows} rows for {symbol} ({inserted_count} new, {updated_count} updated)"
+            )
 
-                return FetchJobResult(
-                    symbol=symbol,
-                    status="success",
-                    rows_fetched=total_rows,
-                    date_from=date_from,
-                    date_to=date_to,
-                    error=None,
-                )
+            return FetchJobResult(
+                symbol=symbol,
+                status="success",
+                rows_fetched=total_rows,
+                date_from=date_from,
+                date_to=date_to,
+                error=None,
+            )
 
     except ImportError:
         logger.error("yfinance not installed. Install with: pip install yfinance")

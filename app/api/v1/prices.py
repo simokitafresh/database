@@ -108,44 +108,43 @@ async def get_prices(
         return []
 
     # --- auto-registration (if enabled) ---
-    async with session.begin():
-        if settings.ENABLE_AUTO_REGISTRATION:
-            logger.info(f"Checking auto-registration for symbols: {symbols_list}")
-            await ensure_symbols_registered(session, symbols_list)
+    if settings.ENABLE_AUTO_REGISTRATION:
+        logger.info(f"Checking auto-registration for symbols: {symbols_list}")
+        await ensure_symbols_registered(session, symbols_list)
 
-        # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
-        # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
-        t0 = time.perf_counter()
+    # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
+    # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
+    t0 = time.perf_counter()
 
-        if auto_fetch:
-            # 新機能：最古日から全データ自動取得
-            fetch_meta = await queries.ensure_coverage_with_auto_fetch(
-                session=session,
-                symbols=symbols_list,
-                date_from=date_from,
-                date_to=date_to,
-                refetch_days=settings.YF_REFETCH_DAYS,
-            )
-
-            if fetch_meta.get("adjustments"):
-                logger.info(f"Date adjustments applied: {fetch_meta['adjustments']}")
-        else:
-            # 従来の動作（自動取得なし）
-            await queries.ensure_coverage(
-                session=session,
-                symbols=symbols_list,
-                date_from=date_from,
-                date_to=date_to,
-                refetch_days=settings.YF_REFETCH_DAYS,
-            )
-
-        # 2) 透過解決済み結果を取得
-        rows = await queries.get_prices_resolved(
+    if auto_fetch:
+        # 新機能：最古日から全データ自動取得
+        fetch_meta = await queries.ensure_coverage_with_auto_fetch(
             session=session,
             symbols=symbols_list,
             date_from=date_from,
             date_to=date_to,
+            refetch_days=settings.YF_REFETCH_DAYS,
         )
+
+        if fetch_meta.get("adjustments"):
+            logger.info(f"Date adjustments applied: {fetch_meta['adjustments']}")
+    else:
+        # 従来の動作（自動取得なし）
+        await queries.ensure_coverage(
+            session=session,
+            symbols=symbols_list,
+            date_from=date_from,
+            date_to=date_to,
+            refetch_days=settings.YF_REFETCH_DAYS,
+        )
+
+    # 2) 透過解決済み結果を取得
+    rows = await queries.get_prices_resolved(
+        session=session,
+        symbols=symbols_list,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
     if len(rows) > settings.API_MAX_ROWS:
         raise HTTPException(status_code=413, detail="response too large")

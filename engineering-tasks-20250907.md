@@ -11,24 +11,24 @@
 
 | タスクID | カテゴリ | ファイル | ステータス | 完了日時 | 検証結果 |
 |----------|----------|----------|------------|----------|----------|
-| FW-001 | Import追加 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-002 | 関数修正1 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-003 | 関数修正2 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-004 | 関数修正3 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-005 | 関数修正4 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-006 | 削除1 | fetch_worker.py | [ ] 未着手 | - | - |
-| FW-007 | 削除2 | fetch_worker.py | [ ] 未着手 | - | - |
-| QR-001 | Import追加 | queries.py | [ ] 未着手 | - | - |
-| QR-002 | 関数作成 | queries.py | [ ] 未着手 | - | - |
-| QR-003 | 関数置換 | queries.py | [ ] 未着手 | - | - |
-| QR-004 | except修正1 | queries.py | [ ] 未着手 | - | - |
-| QR-005 | except修正2 | queries.py | [ ] 未着手 | - | - |
-| PR-001 | 行削除 | prices.py | [ ] 未着手 | - | - |
-| PR-002 | インデント修正 | prices.py | [ ] 未着手 | - | - |
-| VF-001 | Syntax検証 | 全ファイル | [ ] 未着手 | - | - |
-| VF-002 | Import検証 | 全ファイル | [ ] 未着手 | - | - |
-| VF-003 | 起動テスト | Docker | [ ] 未着手 | - | - |
-| VF-004 | APIテスト | エンドポイント | [ ] 未着手 | - | - |
+| FW-001 | Import追加 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-002 | 関数修正1 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-003 | 関数修正2 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-004 | 関数修正3 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-005 | 関数修正4 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-006 | 削除1 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| FW-007 | 削除2 | fetch_worker.py | [x] 完了 | 2025-09-06 | PASS |
+| QR-001 | Import追加 | queries.py | [x] 完了 | 2025-09-06 | PASS |
+| QR-002 | 関数作成 | queries.py | [x] 完了 | 2025-09-06 | PASS |
+| QR-003 | 関数置換 | queries.py | [x] 完了 | 2025-09-06 | PASS |
+| QR-004 | except修正1 | queries.py | [x] 完了 | 2025-09-06 | PASS |
+| QR-005 | except修正2 | queries.py | [x] 完了 | 2025-09-06 | PASS |
+| PR-001 | 行削除 | prices.py | [x] 完了 | 2025-09-06 | PASS |
+| PR-002 | インデント修正 | prices.py | [x] 完了 | 2025-09-06 | PASS |
+| VF-001 | Syntax検証 | 全ファイル | [x] 完了 | 2025-09-06 | PASS |
+| VF-002 | Import検証 | 全ファイル | [x] 完了 | 2025-09-06 | PASS |
+| VF-003 | 起動テスト | Docker | [ ] 未完了 | 2025-09-06 | Docker未インストール |
+| VF-004 | APIテスト | エンドポイント | [ ] 未完了 | 2025-09-06 | サーバ未起動 |
 
 ---
 

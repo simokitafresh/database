@@ -280,47 +280,69 @@ async def find_earliest_available_date(symbol: str, target_date: date) -> date:
     return await run_in_threadpool(_sync_find_earliest)
 
 
-async def ensure_coverage_with_auto_fetch(
+async def binary_search_yf_start_date(
+    symbol: str,
+    min_date: date,
+    max_date: date,
+    target_date: date,
+) -> date:
+    """Yahoo Financeの最古利用可能日を二分探索で特定"""
+    logger = logging.getLogger(__name__)
+
+    # 簡易実装: いくつかの代表的な日付をテスト
+    test_dates = [
+        date(1970, 1, 1),
+        date(1980, 1, 1),
+        date(1990, 1, 1),
+        date(2000, 1, 1),
+        date(2010, 1, 1),
+        target_date,
+    ]
+
+    for test_date in test_dates:
+        if test_date > max_date:
+            break
+
+        try:
+            df = await fetch_prices_df(
+                symbol=symbol,
+                start=test_date,
+                end=test_date + timedelta(days=30),
+            )
+            if df is not None and not df.empty:
+                return test_date
+        except Exception as e:
+            logger.debug(f"Test date {test_date} failed for {symbol}: {e}")
+            continue
+
+    return target_date
+
+
+async def ensure_coverage_unified(
     session: AsyncSession,
     symbols: Sequence[str],
     date_from: date,
     date_to: date,
     refetch_days: int,
 ) -> Dict[str, Any]:
-    """
-    データカバレッジ確保（最古日自動検出付き）
-
-    Parameters
-    ----------
-    session : AsyncSession
-        データベースセッション
-    symbols : Sequence[str]
-        対象シンボルリスト
-    date_from : date
-        要求開始日
-    date_to : date
-        要求終了日
-    refetch_days : int
-        再取得日数
-
-    Returns
-    -------
-    Dict[str, Any]
-        取得結果のメタ情報
-    """
+    """統一されたカバレッジ確保処理"""
     logger = logging.getLogger(__name__)
-    result_meta = {"fetched_ranges": {}, "row_counts": {}, "adjustments": {}}
+    result_meta: Dict[str, Any] = {"fetched_ranges": {}, "row_counts": {}, "adjustments": {}}
 
     for symbol in symbols:
         await with_symbol_lock(session, symbol)
 
+        # 既存データのカバレッジ確認
         cov = await _get_coverage(session, symbol, date_from, date_to)
 
-        if not cov.get("first_date") or cov.get("has_gaps"):
-            logger.info(f"Detecting available date range for {symbol}")
+        # データがない場合、Yahoo Financeで利用可能な範囲を探索
+        if not cov.get("first_date") or cov.get("has_weekday_gaps"):
+            # 実際の利用可能日を探索
+            actual_start = await binary_search_yf_start_date(
+                symbol, date(1970, 1, 1), date_to, date_from
+            )
 
-            actual_start = await find_earliest_available_date(symbol, date_from)
-
+            # 境界条件チェック
             if actual_start > date_to:
                 logger.warning(
                     f"Symbol {symbol}: No data available in requested range "
@@ -335,6 +357,7 @@ async def ensure_coverage_with_auto_fetch(
                 }
                 continue
 
+            # 部分データの場合
             if actual_start > date_from:
                 logger.info(
                     f"Symbol {symbol}: Adjusting date range. "
@@ -347,8 +370,12 @@ async def ensure_coverage_with_auto_fetch(
                     "message": "Data adjusted to available range",
                 }
 
-            logger.info(f"Auto-fetching {symbol} from {actual_start} to {date_to}")
-            df = await fetch_prices_df(symbol=symbol, start=actual_start, end=date_to)
+            # データ取得
+            df = await fetch_prices_df(
+                symbol=symbol,
+                start=actual_start,
+                end=date_to,
+            )
 
             if df is not None and not df.empty:
                 rows = df_to_rows(df, symbol=symbol, source="yfinance")
@@ -362,11 +389,34 @@ async def ensure_coverage_with_auto_fetch(
                     }
                     result_meta["row_counts"][symbol] = len(rows)
 
-                    logger.info(
-                        f"Saved {len(rows)} rows for {symbol} " f"({actual_start} to {date_to})"
-                    )
+        # 既存のカバレッジ処理も実行
+        else:
+            await ensure_coverage(
+                session=session,
+                symbols=[symbol],
+                date_from=date_from,
+                date_to=date_to,
+                refetch_days=refetch_days,
+            )
 
     return result_meta
+
+
+async def ensure_coverage_with_auto_fetch(
+    session: AsyncSession,
+    symbols: Sequence[str],
+    date_from: date,
+    date_to: date,
+    refetch_days: int,
+) -> Dict[str, Any]:
+    """統一実装にリダイレクト"""
+    return await ensure_coverage_unified(
+        session=session,
+        symbols=symbols,
+        date_from=date_from,
+        date_to=date_to,
+        refetch_days=refetch_days,
+    )
 
 
 async def get_prices_resolved(
@@ -407,6 +457,7 @@ async def list_symbols(session: AsyncSession, active: bool | None = None) -> Seq
 
 __all__ = [
     "ensure_coverage",
+    "ensure_coverage_unified",  # 追加
     "ensure_coverage_with_auto_fetch",  # 追加
     "find_earliest_available_date",  # 追加
     "get_prices_resolved",

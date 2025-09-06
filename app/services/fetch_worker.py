@@ -241,10 +241,14 @@ async def fetch_symbol_data(
         )
 
         async with SessionLocal() as session:
-            # async with session.begin():  # 削除
-            inserted_count, updated_count = await upsert_prices(
-                session, rows_to_upsert, force_update=force
-            )
+            try:
+                inserted_count, updated_count = await upsert_prices(
+                    session, rows_to_upsert, force_update=force
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
             total_rows = inserted_count + updated_count
             logger.info(

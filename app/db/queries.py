@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 import logging
-from typing import Any, List, Mapping, Optional, Sequence, cast
+from typing import Any, List, Mapping, Optional, Sequence, cast, Dict
 
 import anyio
 from sqlalchemy import bindparam, text
@@ -237,6 +237,128 @@ async def ensure_coverage(
             )
 
 
+async def find_earliest_available_date(symbol: str, target_date: date) -> date:
+    """
+    効率的に最古の利用可能日を探索
+
+    Parameters
+    ----------
+    symbol : str
+        検索対象のシンボル
+    target_date : date
+        要求された開始日
+
+    Returns
+    -------
+    date
+        実際に利用可能な最古日
+    """
+    import yfinance as yf
+    from datetime import timedelta
+
+    test_dates = [
+        date(1970, 1, 1),
+        date(1980, 1, 1),
+        date(1990, 1, 1),
+        date(2000, 1, 1),
+        date(2010, 1, 1),
+    ]
+
+    for test_date in test_dates:
+        if test_date >= target_date:
+            try:
+                df = yf.download(
+                    symbol,
+                    start=test_date,
+                    end=test_date + timedelta(days=30),
+                    progress=False,
+                    timeout=5
+                )
+                if not df.empty:
+                    return df.index[0].date()
+            except:
+                continue
+
+    return max(target_date, date(2000, 1, 1))
+
+
+async def ensure_coverage_with_auto_fetch(
+    session: AsyncSession,
+    symbols: Sequence[str],
+    date_from: date,
+    date_to: date,
+    refetch_days: int,
+) -> Dict[str, Any]:
+    """
+    データカバレッジ確保（最古日自動検出付き）
+
+    Parameters
+    ----------
+    session : AsyncSession
+        データベースセッション
+    symbols : Sequence[str]
+        対象シンボルリスト
+    date_from : date
+        要求開始日
+    date_to : date
+        要求終了日
+    refetch_days : int
+        再取得日数
+
+    Returns
+    -------
+    Dict[str, Any]
+        取得結果のメタ情報
+    """
+    logger = logging.getLogger(__name__)
+    result_meta = {
+        "fetched_ranges": {},
+        "row_counts": {},
+        "adjustments": {}
+    }
+
+    for symbol in symbols:
+        await with_symbol_lock(session, symbol)
+
+        cov = await _get_coverage(session, symbol, date_from, date_to)
+
+        if not cov.get("first_date") or cov.get("has_gaps"):
+            logger.info(f"Detecting available date range for {symbol}")
+
+            actual_start = await find_earliest_available_date(symbol, date_from)
+
+            if actual_start > date_from:
+                result_meta["adjustments"][symbol] = (
+                    f"requested {date_from}, actual {actual_start}"
+                )
+                logger.warning(
+                    f"Symbol {symbol}: Auto-adjusting date_from "
+                    f"from {date_from} to {actual_start}"
+                )
+
+            logger.info(f"Auto-fetching {symbol} from {actual_start} to {date_to}")
+            df = await fetch_prices_df(symbol=symbol, start=actual_start, end=date_to)
+
+            if df is not None and not df.empty:
+                rows = df_to_rows(df, symbol=symbol, source="yfinance")
+                if rows:
+                    up_sql = text(upsert_prices_sql())
+                    await session.execute(up_sql, rows)
+
+                    result_meta["fetched_ranges"][symbol] = {
+                        "from": str(actual_start),
+                        "to": str(date_to)
+                    }
+                    result_meta["row_counts"][symbol] = len(rows)
+
+                    logger.info(
+                        f"Saved {len(rows)} rows for {symbol} "
+                        f"({actual_start} to {date_to})"
+                    )
+
+    return result_meta
+
+
 async def get_prices_resolved(
     session: AsyncSession,
     symbols: Sequence[str],
@@ -277,6 +399,8 @@ async def list_symbols(session: AsyncSession, active: bool | None = None) -> Seq
 
 __all__ = [
     "ensure_coverage",
+    "ensure_coverage_with_auto_fetch",  # 追加
+    "find_earliest_available_date",  # 追加
     "get_prices_resolved",
     "list_symbols",
     "LIST_SYMBOLS_SQL",

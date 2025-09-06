@@ -97,6 +97,7 @@ async def get_prices(
     symbols: str = Query(..., description="Comma-separated symbols"),
     date_from: date = Query(..., alias="from"),
     date_to: date = Query(..., alias="to"),
+    auto_fetch: bool = Query(True, description="Auto-fetch all available data if missing"),  # 追加
     session=Depends(get_session),
 ):
     # --- validation ---
@@ -115,13 +116,28 @@ async def get_prices(
         # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
         # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
         t0 = time.perf_counter()
-        await queries.ensure_coverage(
-            session=session,
-            symbols=symbols_list,
-            date_from=date_from,
-            date_to=date_to,
-            refetch_days=settings.YF_REFETCH_DAYS,
-        )
+
+        if auto_fetch:
+            # 新機能：最古日から全データ自動取得
+            fetch_meta = await queries.ensure_coverage_with_auto_fetch(
+                session=session,
+                symbols=symbols_list,
+                date_from=date_from,
+                date_to=date_to,
+                refetch_days=settings.YF_REFETCH_DAYS,
+            )
+
+            if fetch_meta.get("adjustments"):
+                logger.info(f"Date adjustments applied: {fetch_meta['adjustments']}")
+        else:
+            # 従来の動作（自動取得なし）
+            await queries.ensure_coverage(
+                session=session,
+                symbols=symbols_list,
+                date_from=date_from,
+                date_to=date_to,
+                refetch_days=settings.YF_REFETCH_DAYS,
+            )
 
         # 2) 透過解決済み結果を取得
         rows = await queries.get_prices_resolved(

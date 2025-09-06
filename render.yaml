@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: stock-api
+    name: stockdata-api  # stock-apiから変更
     env: docker
     plan: starter
     autoDeploy: true
@@ -11,23 +11,23 @@ services:
         sync: false
       - key: ALEMBIC_DATABASE_URL
         sync: false
+      - key: DB_POOL_SIZE
+        value: "2"  # 3から2に変更
+      - key: DB_MAX_OVERFLOW
+        value: "3"  # 2から3に変更
+      - key: DB_POOL_RECYCLE
+        value: "900"  # 1800から900に変更
+      - key: GUNICORN_TIMEOUT
+        value: "60"  # 180から60に変更
+      - key: FETCH_TIMEOUT_SECONDS
+        value: "30"  # 新規追加
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: "45"  # 新規追加
+      - key: YF_REQ_CONCURRENCY
+        value: "2"  # 4から2に変更
+      - key: WEB_CONCURRENCY
+        value: "2"
       - key: API_MAX_SYMBOLS
         value: "50"
       - key: API_MAX_ROWS
         value: "1000000"
-      - key: YF_REFETCH_DAYS
-        value: "30"
-      - key: YF_REQ_CONCURRENCY
-        value: "4"
-      - key: CORS_ALLOW_ORIGINS
-        value: "https://your-frontend.example"
-      - key: DB_POOL_SIZE
-        value: "3"
-      - key: DB_MAX_OVERFLOW
-        value: "2"
-      - key: DB_POOL_RECYCLE
-        value: "1800"
-      - key: GUNICORN_TIMEOUT
-        value: "180"
-      - key: WEB_CONCURRENCY
-        value: "2"

@@ -13,21 +13,21 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
     
     # Database connection pool settings
-    DB_POOL_SIZE: int = 5  # Reduced for cloud deployment
-    DB_MAX_OVERFLOW: int = 5  # Reduced for cloud deployment 
+    DB_POOL_SIZE: int = 2  # 5から2に変更
+    DB_MAX_OVERFLOW: int = 3  # 5から3に変更
     DB_POOL_PRE_PING: bool = True
-    DB_POOL_RECYCLE: int = 1800  # 30 minutes for cloud stability
+    DB_POOL_RECYCLE: int = 900  # 1800から900に変更
     DB_ECHO: bool = False
     
     # API settings
     API_MAX_SYMBOLS: int = 5
     API_MAX_ROWS: int = 10000
     YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
-    YF_REQ_CONCURRENCY: int = 4
-    FETCH_TIMEOUT_SECONDS: int = 8
+    YF_REQ_CONCURRENCY: int = 2  # 4から2に変更
+    FETCH_TIMEOUT_SECONDS: int = 30  # 8から30に変更
     FETCH_MAX_RETRIES: int = 3
     FETCH_BACKOFF_MAX_SECONDS: float = 8.0
-    REQUEST_TIMEOUT_SECONDS: int = 15
+    REQUEST_TIMEOUT_SECONDS: int = 45  # 15から45に変更
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
     

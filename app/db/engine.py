@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Tuple
 import uuid
+import logging
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 from sqlalchemy.ext.asyncio import (
@@ -13,6 +14,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool, StaticPool
+
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_asyncpg_dsn(dsn: str) -> tuple[str, bool]:
@@ -37,10 +41,10 @@ def _normalize_asyncpg_dsn(dsn: str) -> tuple[str, bool]:
 
 def create_engine_and_sessionmaker(
     database_url: str,
-    pool_size: int = 5,  # Reduced for cloud deployment
-    max_overflow: int = 5,  # Reduced for cloud deployment
+    pool_size: int = 2,  # 5から2に変更
+    max_overflow: int = 3,  # 5から3に変更
     pool_pre_ping: bool = True,
-    pool_recycle: int = 1800,  # Reduced to 30 minutes for cloud
+    pool_recycle: int = 900,  # 1800から900に変更
     echo: bool = False
 ) -> Tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     """Create async SQLAlchemy engine and session factory with optimized pool settings.
@@ -73,10 +77,14 @@ def create_engine_and_sessionmaker(
         
         if ssl_required:
             connect_args.setdefault("ssl", True)
-        
+
         # Use NullPool for cloud deployment with connection poolers
         if "supabase.com" in database_url or "pgbouncer" in database_url.lower() or pool_size <= 1:
             poolclass = NullPool
+
+        if "pooler.supabase.com" in database_url:
+            poolclass = NullPool
+            logger.info("Using NullPool for Supabase Pooler mode")
         
     elif database_url.startswith("postgresql+psycopg://"):
         # psycopgドライバー（同期）の場合

@@ -15,7 +15,7 @@ class SymbolOut(BaseModel):
     is_active: bool | None = None
     first_date: date | None = None
     last_date: date | None = None
-    created_at: datetime
+    created_at: datetime | None = None
 
 
 __all__ = ["SymbolOut"]

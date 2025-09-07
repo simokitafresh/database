@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_session
+from app.db.queries import list_symbols as db_list_symbols
 from app.schemas.symbols import SymbolOut
 
 router = APIRouter()
@@ -19,16 +20,8 @@ async def list_symbols(
 ) -> list[SymbolOut]:
     """Return symbols, optionally filtered by active flag.
 
-    This is a stub implementation that delegates to raw SQL execution
-    on the provided session. The repository layer will replace this
-    logic in later tasks.
+    This uses the database query function to properly retrieve all symbol data
+    including metadata like creation dates and symbol details.
     """
-    stmt = text("SELECT symbol FROM symbols")
-    params: dict[str, Any] = {}
-    if active is not None:
-        stmt = text("SELECT symbol FROM symbols WHERE is_active = :active")
-        params["active"] = active
-
-    result = await session.execute(stmt, params)
-    rows = result.fetchall()
-    return [SymbolOut(symbol=row.symbol) for row in rows]
+    rows = await db_list_symbols(session, active)
+    return [SymbolOut(**row) for row in rows]

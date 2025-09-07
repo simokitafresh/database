@@ -441,9 +441,9 @@ async def get_prices_resolved(
 
 
 LIST_SYMBOLS_SQL = (
-    "SELECT symbol, name, exchange, currency, is_active, first_date, last_date "
+    "SELECT symbol, name, exchange, currency, is_active, first_date, last_date, created_at "
     "FROM symbols "
-    "WHERE (:active::boolean IS NULL OR is_active = :active) "
+    "WHERE (:active IS NULL OR is_active = :active) "
     "ORDER BY symbol"
 )
 
@@ -451,8 +451,15 @@ LIST_SYMBOLS_SQL = (
 async def list_symbols(session: AsyncSession, active: bool | None = None) -> Sequence[Any]:
     """Return symbol metadata optionally filtered by activity."""
 
-    result = await session.execute(text(LIST_SYMBOLS_SQL), {"active": active})
-    return result.fetchall()
+    if active is None:
+        sql = "SELECT symbol, name, exchange, currency, is_active, first_date, last_date, created_at FROM symbols ORDER BY symbol"
+        result = await session.execute(text(sql))
+    else:
+        sql = "SELECT symbol, name, exchange, currency, is_active, first_date, last_date, created_at FROM symbols WHERE is_active = :active ORDER BY symbol"
+        result = await session.execute(text(sql), {"active": active})
+    
+    rows = result.fetchall()
+    return [dict(row._mapping) for row in rows]
 
 
 __all__ = [

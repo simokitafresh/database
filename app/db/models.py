@@ -19,6 +19,7 @@ class Symbol(Base):
     exchange = sa.Column(sa.String, nullable=True)
     currency = sa.Column(sa.String(3), nullable=True)
     is_active = sa.Column(sa.Boolean, nullable=True)
+    has_full_history = sa.Column(sa.Boolean, nullable=False, server_default=sa.false())
     first_date = sa.Column(sa.Date, nullable=True)
     last_date = sa.Column(sa.Date, nullable=True)
     created_at = sa.Column(

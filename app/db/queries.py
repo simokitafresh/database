@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from datetime import date, timedelta
 from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 
@@ -93,8 +94,23 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
     )
 
     res = await session.execute(sql, {"symbol": symbol, "date_from": date_from, "date_to": date_to})
-    row = cast(Mapping[str, Any], res.mappings().first() or {})
+    mappings = res.mappings()
+    first = getattr(mappings, "first", None)
+    row_obj = first() if callable(first) else None
+    if inspect.isawaitable(row_obj):
+        row_obj = await row_obj
+    row = cast(Mapping[str, Any], row_obj or {})
     return dict(row)
+
+
+async def _symbol_has_any_prices(session: AsyncSession, symbol: str) -> bool:
+    """Return True if any price rows exist for the symbol (any date)."""
+    res = await session.execute(text("SELECT 1 FROM prices WHERE symbol = :symbol LIMIT 1"), {"symbol": symbol})
+    first = getattr(res, "first", None)
+    row = first() if callable(first) else None
+    if inspect.isawaitable(row):
+        row = await row
+    return row is not None
 
 
 async def ensure_coverage(
@@ -120,6 +136,44 @@ async def ensure_coverage(
         # アドバイザリロック取得→欠損判定→取得→UPSERT（トランザクション管理は呼び出し側に委ねる）
         await with_symbol_lock(session, symbol)
 
+        # Prefetch full history if not yet fully cached (flag-based, single full-range fetch)
+        try:
+            # Ensure symbol row exists (FK safety); ignore if exists
+            await session.execute(
+                text("INSERT INTO symbols (symbol, is_active) VALUES (:symbol, TRUE) ON CONFLICT (symbol) DO NOTHING"),
+                {"symbol": symbol},
+            )
+            EPOCH_START = date(1970, 1, 1)
+            today = date.today()
+            res = await session.execute(
+                text("SELECT has_full_history FROM symbols WHERE symbol = :symbol"),
+                {"symbol": symbol},
+            )
+            has_full = bool(res.scalar() or False)
+        except Exception:
+            has_full = True  # be conservative on errors
+
+        if not has_full:
+            try:
+                df_full = await fetch_prices_df(symbol, EPOCH_START, today)
+                if df_full is not None and not df_full.empty:
+                    rows_full = df_to_rows(df_full, symbol=symbol, source="yfinance")
+                    if rows_full:
+                        up_sql = text(upsert_prices_sql())
+                        await session.execute(up_sql, rows_full)
+                        await session.execute(
+                            text("UPDATE symbols SET has_full_history = TRUE WHERE symbol = :symbol"),
+                            {"symbol": symbol},
+                        )
+                        logger.info(
+                            "full-history upsert completed",
+                            extra=dict(symbol=symbol, start=str(EPOCH_START), end=str(today), n_rows=len(rows_full)),
+                        )
+            except Exception as e:  # pragma: no cover
+                logger.warning(
+                    f"full-history prefetch failed for {symbol}: {e}", exc_info=True
+                )
+
         cov = await _get_coverage(session, symbol, date_from, date_to)
 
         last_date: Optional[date] = cov.get("last_date")
@@ -142,6 +196,7 @@ async def ensure_coverage(
 
         # 取得範囲を決定（重複を避けるため、本当に必要な部分のみ取得）
         fetch_ranges = []
+        
 
         # 1) 最新データの再取得（refetch_days分のみ、ただし最新データが新しい場合はスキップ）
         if last_date and date_to >= last_date:
@@ -216,7 +271,7 @@ async def ensure_coverage(
                 "fetching data range", extra=dict(symbol=symbol, start=str(start), end=str(end))
             )
 
-            df = await fetch_prices_df(symbol=symbol, start=start, end=end)
+            df = await fetch_prices_df(symbol, start, end)
             if df is None or df.empty:
                 logger.debug(
                     "yfinance returned empty frame",

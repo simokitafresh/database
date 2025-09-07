@@ -5,6 +5,8 @@ import time
 from datetime import date, timedelta
 from typing import Optional
 from urllib.error import HTTPError as URLlibHTTPError
+from contextlib import redirect_stdout, redirect_stderr
+import io
 
 import pandas as pd
 import requests
@@ -67,7 +69,8 @@ def fetch_prices(
 
     while True:
         try:
-            df = yf.download(
+            with io.StringIO() as _out, io.StringIO() as _err, redirect_stdout(_out), redirect_stderr(_err):
+                df = yf.download(
                 symbol,
                 start=fetch_start,
                 end=fetch_end,  # 修正: end → fetch_end (yfinanceの排他的仕様に対応)
@@ -94,7 +97,8 @@ def fetch_prices(
                 # Fallback: try Ticker().history which sometimes succeeds when download() returns empty
                 try:
                     tk = yf.Ticker(symbol)
-                    df2 = tk.history(
+                    with io.StringIO() as _out, io.StringIO() as _err, redirect_stdout(_out), redirect_stderr(_err):
+                        df2 = tk.history(
                         start=fetch_start,
                         end=fetch_end,
                         auto_adjust=True,

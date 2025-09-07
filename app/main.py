@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import asyncio
 
 # Windows環境でpsycopgを使用する場合の設定
 if sys.platform == "win32":
@@ -38,12 +39,17 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 init_error_handlers(app)
 
-# Set application log level from settings (INFO by default)
+from app.core.logging import configure_logging
+
+# Configure JSON logging to stdout so Render captures application logs
 try:
-    level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
-    logging.getLogger().setLevel(level)
+    configure_logging(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 except Exception:
-    pass
+    # Fallback: at least set root level
+    try:
+        logging.getLogger().setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
+    except Exception:
+        pass
 
 app.add_middleware(RequestIDMiddleware)
 cors = create_cors_middleware(settings)

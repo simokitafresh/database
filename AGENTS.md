@@ -189,7 +189,7 @@ app/
 │   ├── job_worker.py    # バックグラウンド実行
 │   ├── query_optimizer.py # 50-70%高速化
 │   └── fetcher.py       # yfinance連携
-├── migrations/versions/ # 001-005マイグレーション完了
+├── migrations/versions/ # 001-008マイグレーション完了（008: has_full_history 追加）
 └── schemas/             # Pydantic完全対応
     ├── coverage.py      # カバレッジAPI用
     ├── jobs.py          # ジョブAPI用

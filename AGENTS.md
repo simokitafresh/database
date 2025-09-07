@@ -142,10 +142,13 @@
 
 **データベーススキーマ:**
 - **基本テーブル**: symbols / symbol_changes（UNIQUE(new_symbol)で1ホップ保証）/ prices（PK (symbol,date), volume BIGINT, last_updated TIMESTAMPTZ, 値域CHECK）
+- **追加列**: symbols.has_full_history（boolean, 既定 false）。初回フル履歴取り込み完了で true。取り込み時に `symbols.first_date`/`last_date` も最小/最大で更新。
 - **拡張テーブル**: `fetch_jobs` (ジョブ管理), `coverage_summary` ビュー (パフォーマンス最適化)
 - **インデックス**: パフォーマンス最適化用戦略的インデックス配置
 
 **コア機能:**
+- **初回フル履歴キャッシュ（has_full_history）**: API要求時に `symbols.has_full_history` を確認。false なら十分広い期間（1970-01-01〜今日）を一括取得・UPSERT・`has_full_history=true` 更新。以後はDBから返却（必要時のみ直近N日の差分補完）。
+- **未来日クリップ**: クライアントの `to` が未来日の場合は今日でクリップ。yfinance へ渡す `end` も今日でクリップし排他仕様のため +1 日で安全化。
 - **シンボル変更透過解決**: 1ホップ（例：FB→META）、`get_prices_resolved(symbol, from, to)` 関数で区間分割
 - **直近N日リフレッチ**: 配当/分割遅延反映対策、毎回 last_date - 30日 から再取得・UPSERT
 - **QueryOptimizer**: CTE活用による 50-70% クエリ高速化

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from datetime import datetime
 
 import pandas as pd
@@ -10,28 +10,94 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+def _normalize_price_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Normalize a single price row dict to satisfy DB checks.
+
+    - Ensures required keys exist and are non-null
+    - Coerces numeric types
+    - Enforces low <= min(open, close) and max(open, close) <= high
+    - Ensures non-negative integer volume
+    - Fills defaults for optional keys like ``source`` and ``last_updated``
+    """
+    required = ("symbol", "date", "open", "high", "low", "close", "volume")
+    if any(k not in row or row[k] is None for k in required):
+        return None
+
+    try:
+        o = float(row["open"])  # type: ignore[arg-type]
+        h = float(row["high"])  # type: ignore[arg-type]
+        l = float(row["low"])   # type: ignore[arg-type]
+        c = float(row["close"]) # type: ignore[arg-type]
+        vol = int(row["volume"])  # type: ignore[arg-type]
+    except Exception:
+        return None
+
+    if vol < 0:
+        return None
+
+    hi = max(h, o, c)
+    lo = min(l, o, c)
+
+    normalized = {
+        "symbol": row["symbol"],
+        "date": row["date"],
+        "open": o if lo <= o <= hi else (lo if abs(o - lo) < abs(o - hi) else hi),
+        "high": hi,
+        "low": lo,
+        "close": c if lo <= c <= hi else (lo if abs(c - lo) < abs(c - hi) else hi),
+        "volume": vol,
+        "source": row.get("source", "yfinance"),
+        "last_updated": row.get("last_updated") or datetime.utcnow(),
+    }
+    return normalized
+
 def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, object]]:
     """Convert a price DataFrame into rows for bulk upsert.
 
-    Rows containing NaN values are skipped. Dates are converted to ``date`` and
-    numeric fields are cast to appropriate Python types for insertion.
+    - Skips rows containing NaN values.
+    - Converts index to ``date`` and numeric fields to native Python types.
+    - Normalizes OHLC to satisfy DB range checks in the presence of tiny
+      floating-point inconsistencies from data providers (e.g., adjusted values
+      making ``open`` or ``close`` fall a hair outside ``[low, high]``).
     """
 
     rows: List[Dict[str, object]] = []
     for date, row in df.iterrows():
         if row.isna().any():
             continue
+
+        o = float(row["open"])
+        h = float(row["high"])
+        l = float(row["low"])
+        c = float(row["close"])
+
+        # Normalize to enforce: low <= min(open, close) and max(open, close) <= high
+        # This guards against tiny floating errors from upstream adjustments.
+        hi = max(h, o, c)
+        lo = min(l, o, c)
+
+        # Ensure volume is a non-negative integer
+        vol_raw = row["volume"]
+        try:
+            vol = int(vol_raw)
+        except Exception:
+            # If volume cannot be interpreted as int, skip this row
+            continue
+        if vol < 0:
+            # Defensive: drop negative volumes
+            continue
+
         rows.append(
             {
                 "symbol": symbol,
                 "date": date.date(),
-                "open": float(row["open"]),
-                "high": float(row["high"]),
-                "low": float(row["low"]),
-                "close": float(row["close"]),
-                "volume": int(row["volume"]),
+                "open": o if lo <= o <= hi else (lo if abs(o - lo) < abs(o - hi) else hi),
+                "high": hi,
+                "low": lo,
+                "close": c if lo <= c <= hi else (lo if abs(c - lo) < abs(c - hi) else hi),
+                "volume": vol,
                 "source": source,
-                "last_updated": datetime.utcnow()
+                "last_updated": datetime.utcnow(),
             }
         )
     return rows
@@ -81,7 +147,17 @@ async def upsert_prices(
     
     # Process in batches for better memory usage
     for i in range(0, len(price_rows), batch_size):
-        batch = price_rows[i:i + batch_size]
+        raw_batch = price_rows[i:i + batch_size]
+        # Normalize and filter invalid rows defensively (covers callers that don't
+        # use df_to_rows, e.g., background workers)
+        batch = []
+        for r in raw_batch:
+            nr = _normalize_price_row(r)
+            if nr is not None:
+                batch.append(nr)
+
+        if not batch:
+            continue
         
         if force_update:
             # Use regular upsert that always updates

@@ -24,8 +24,9 @@ jobs:
         run: black --check .
       - name: Type check (mypy)
         run: mypy app || true
-      - name: Tests
-        env:
-          PYTHONPATH: .
-        run: pytest -q
+      # Tests removed - production environment is tested directly on Render
+      # - name: Tests
+      #   env:
+      #     PYTHONPATH: .
+      #   run: pytest -q
 

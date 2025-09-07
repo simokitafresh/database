@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import date, timedelta
 from typing import Optional
@@ -11,6 +12,9 @@ import yfinance as yf
 from requests.exceptions import HTTPError as RequestsHTTPError
 
 from app.core.config import Settings
+
+# yfinance の冗長な失敗ログ（"1 Failed download: ... possibly delisted" 等）を抑制
+logging.getLogger("yfinance").setLevel(logging.ERROR)
 
 
 def fetch_prices(

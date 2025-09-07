@@ -25,6 +25,73 @@ async def with_symbol_lock(session: AsyncSession, symbol: str) -> None:
     await advisory_lock(conn, symbol)
 
 
+async def _ensure_full_history_once(session: AsyncSession, symbol: str) -> None:
+    """Ensure one-time full-history fetch for a symbol using a persistent flag.
+
+    If ``symbols.has_full_history`` is false, fetch from 1970-01-01 to today
+    and upsert, then set the flag to true. Safe to call repeatedly.
+    """
+    logger = logging.getLogger(__name__)
+    try:
+        # Ensure symbol row exists (FK safety) and check flag
+        await session.execute(
+            text(
+                "INSERT INTO symbols (symbol, is_active) VALUES (:symbol, TRUE) "
+                "ON CONFLICT (symbol) DO NOTHING"
+            ),
+            {"symbol": symbol},
+        )
+        res = await session.execute(
+            text("SELECT has_full_history FROM symbols WHERE symbol = :symbol"),
+            {"symbol": symbol},
+        )
+        has_full = bool(res.scalar() or False)
+        if has_full:
+            return
+
+        EPOCH_START = date(1970, 1, 1)
+        today = date.today()
+        df = await fetch_prices_df(symbol, EPOCH_START, today)
+        if df is None or df.empty:
+            return
+        rows = df_to_rows(df, symbol=symbol, source="yfinance")
+        if not rows:
+            return
+        up_sql = text(upsert_prices_sql())
+        await session.execute(up_sql, rows)
+        # Update symbol metadata (first_date/last_date) and set full-history flag
+        try:
+            min_date = min(r.get("date") for r in rows if r.get("date") is not None)
+            max_date = max(r.get("date") for r in rows if r.get("date") is not None)
+        except Exception:
+            min_date = None
+            max_date = None
+        if min_date and max_date:
+            await session.execute(
+                text(
+                    """
+                    UPDATE symbols
+                    SET first_date = COALESCE(LEAST(first_date, :min_date), :min_date),
+                        last_date  = COALESCE(GREATEST(last_date, :max_date), :max_date),
+                        has_full_history = TRUE
+                    WHERE symbol = :symbol
+                    """
+                ),
+                {"symbol": symbol, "min_date": min_date, "max_date": max_date},
+            )
+        else:
+            await session.execute(
+                text("UPDATE symbols SET has_full_history = TRUE WHERE symbol = :symbol"),
+                {"symbol": symbol},
+            )
+        logger.info(
+            "full-history upsert completed",
+            extra=dict(symbol=symbol, start=str(EPOCH_START), end=str(today), n_rows=len(rows)),
+        )
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"full-history prefetch failed for {symbol}: {e}", exc_info=True)
+
+
 _fetch_semaphore = anyio.Semaphore(settings.YF_REQ_CONCURRENCY)
 
 
@@ -135,44 +202,8 @@ async def ensure_coverage(
     for symbol in symbols:
         # アドバイザリロック取得→欠損判定→取得→UPSERT（トランザクション管理は呼び出し側に委ねる）
         await with_symbol_lock(session, symbol)
-
-        # Prefetch full history if not yet fully cached (flag-based, single full-range fetch)
-        try:
-            # Ensure symbol row exists (FK safety); ignore if exists
-            await session.execute(
-                text("INSERT INTO symbols (symbol, is_active) VALUES (:symbol, TRUE) ON CONFLICT (symbol) DO NOTHING"),
-                {"symbol": symbol},
-            )
-            EPOCH_START = date(1970, 1, 1)
-            today = date.today()
-            res = await session.execute(
-                text("SELECT has_full_history FROM symbols WHERE symbol = :symbol"),
-                {"symbol": symbol},
-            )
-            has_full = bool(res.scalar() or False)
-        except Exception:
-            has_full = True  # be conservative on errors
-
-        if not has_full:
-            try:
-                df_full = await fetch_prices_df(symbol, EPOCH_START, today)
-                if df_full is not None and not df_full.empty:
-                    rows_full = df_to_rows(df_full, symbol=symbol, source="yfinance")
-                    if rows_full:
-                        up_sql = text(upsert_prices_sql())
-                        await session.execute(up_sql, rows_full)
-                        await session.execute(
-                            text("UPDATE symbols SET has_full_history = TRUE WHERE symbol = :symbol"),
-                            {"symbol": symbol},
-                        )
-                        logger.info(
-                            "full-history upsert completed",
-                            extra=dict(symbol=symbol, start=str(EPOCH_START), end=str(today), n_rows=len(rows_full)),
-                        )
-            except Exception as e:  # pragma: no cover
-                logger.warning(
-                    f"full-history prefetch failed for {symbol}: {e}", exc_info=True
-                )
+        # Ensure one-time full-history cache using flag
+        await _ensure_full_history_once(session, symbol)
 
         cov = await _get_coverage(session, symbol, date_from, date_to)
 
@@ -386,6 +417,8 @@ async def ensure_coverage_unified(
 
     for symbol in symbols:
         await with_symbol_lock(session, symbol)
+        # Ensure one-time full-history cache using flag
+        await _ensure_full_history_once(session, symbol)
 
         # 既存データのカバレッジ確認
         cov = await _get_coverage(session, symbol, date_from, date_to)

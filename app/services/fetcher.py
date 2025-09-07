@@ -61,7 +61,8 @@ def fetch_prices(
             fetch_start = refetch_start
 
     # yfinanceのend引数は排他的なので、1日加算して包含的にする
-    fetch_end = end + timedelta(days=1)
+    safe_end = min(end, date.today())
+    fetch_end = safe_end + timedelta(days=1)
 
     attempts = 0
     delay = 1.0

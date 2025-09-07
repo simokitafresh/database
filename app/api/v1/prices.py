@@ -115,6 +115,14 @@ async def get_prices(
     # --- orchestration (欠損検出・再取得は内部サービスに委譲してもよい) ---
     # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
     t0 = time.perf_counter()
+    # Clamp future 'to' to today to avoid yfinance/pandas overflow
+    effective_to = date_to
+    try:
+        today = date.today()
+        if effective_to > today:
+            effective_to = today
+    except Exception:
+        pass
 
     if auto_fetch:
         # 新機能：最古日から全データ自動取得
@@ -122,7 +130,7 @@ async def get_prices(
             session=session,
             symbols=symbols_list,
             date_from=date_from,
-            date_to=date_to,
+            date_to=effective_to,
             refetch_days=settings.YF_REFETCH_DAYS,
         )
 
@@ -134,7 +142,7 @@ async def get_prices(
             session=session,
             symbols=symbols_list,
             date_from=date_from,
-            date_to=date_to,
+            date_to=effective_to,
             refetch_days=settings.YF_REFETCH_DAYS,
         )
 
@@ -143,7 +151,7 @@ async def get_prices(
         session=session,
         symbols=symbols_list,
         date_from=date_from,
-        date_to=date_to,
+        date_to=effective_to,
     )
 
     if len(rows) > settings.API_MAX_ROWS:
@@ -154,7 +162,7 @@ async def get_prices(
         extra=dict(
             symbols=symbols_list,
             date_from=str(date_from),
-            date_to=str(date_to),
+            date_to=str(effective_to),
             rows=len(rows),
             duration_ms=dt_ms,
         ),

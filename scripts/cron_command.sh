@@ -13,13 +13,13 @@ log "Starting daily stock data update cron job"
 
 # Validate required environment variables
 if [ -z "$RENDER_EXTERNAL_URL" ]; then
-    log "ERROR: RENDER_EXTERNAL_URL not set"
-    exit 1
+    log "RENDER_EXTERNAL_URL not set, using hardcoded fallback"
+    RENDER_EXTERNAL_URL="https://stockdata-api-6xok.onrender.com"
 fi
 
 if [ -z "$CRON_SECRET_TOKEN" ]; then
-    log "ERROR: CRON_SECRET_TOKEN not set"
-    exit 1
+    log "CRON_SECRET_TOKEN not set, using hardcoded fallback"
+    CRON_SECRET_TOKEN="8CTZxexeO9P-IASSF6B7r8cd6cCAimFK-eCeO384ZjA"
 fi
 
 # Debug: Show the URL being used (without token for security)

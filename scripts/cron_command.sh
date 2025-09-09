@@ -22,6 +22,12 @@ if [ -z "$CRON_SECRET_TOKEN" ]; then
     CRON_SECRET_TOKEN="8CTZxexeO9P-IASSF6B7r8cd6cCAimFK-eCeO384ZjA"
 fi
 
+# Ensure URL doesn't start with duplicate https://
+if [[ "$RENDER_EXTERNAL_URL" == https://https://* ]]; then
+    RENDER_EXTERNAL_URL="${RENDER_EXTERNAL_URL#https://}"
+    log "Fixed duplicate https:// in URL"
+fi
+
 # Debug: Show the URL being used (without token for security)
 log "Using URL: ${RENDER_EXTERNAL_URL}/v1/daily-update"
 

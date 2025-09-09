@@ -1,12 +1,12 @@
 services:
   - type: web
     name: stockdata-api  # stock-apiから変更
-    env: docker
+    env: python
     plan: starter
     autoDeploy: true
     healthCheckPath: /healthz
-    startCommand: ./docker/entrypoint.sh
     buildCommand: pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+    startCommand: gunicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2 --worker-class uvicorn.workers.UvicornWorker --timeout 60
     envVars:
       - key: DATABASE_URL
         sync: false

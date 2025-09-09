@@ -6,6 +6,7 @@ services:
     autoDeploy: true
     healthCheckPath: /healthz
     startCommand: ./docker/entrypoint.sh
+    buildCommand: pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -31,3 +32,5 @@ services:
         value: "50"
       - key: API_MAX_ROWS
         value: "1000000"
+      - key: PYTHON_VERSION
+        value: "3.12"

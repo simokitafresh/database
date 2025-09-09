@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
     
+    # Cron Job Settings
+    CRON_SECRET_TOKEN: str = ""
+    CRON_BATCH_SIZE: int = 50
+    CRON_UPDATE_DAYS: int = 7
+    
     # Auto-registration settings
     ENABLE_AUTO_REGISTRATION: bool = True
     AUTO_REGISTER_TIMEOUT: int = 15  # Total timeout for registration process

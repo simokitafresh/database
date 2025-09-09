@@ -22,10 +22,19 @@ if [ -z "$CRON_SECRET_TOKEN" ]; then
     exit 1
 fi
 
+# Debug: Show the URL being used (without token for security)
+log "Using URL: ${RENDER_EXTERNAL_URL}/v1/daily-update"
+
 # Execute the cron job with retry logic
 log "Executing daily update endpoint..."
 
-curl -X POST "${RENDER_EXTERNAL_URL}/v1/daily-update" \
+# Ensure URL doesn't have trailing slash and construct full endpoint URL
+BASE_URL="${RENDER_EXTERNAL_URL%/}"
+ENDPOINT_URL="${BASE_URL}/v1/daily-update"
+
+log "Full endpoint URL: ${ENDPOINT_URL}"
+
+curl -X POST "${ENDPOINT_URL}" \
   -H "X-Cron-Secret: ${CRON_SECRET_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"dry_run": false}' \

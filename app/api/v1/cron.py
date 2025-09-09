@@ -102,11 +102,10 @@ async def daily_update(
                 return CronDailyUpdateResponse(
                     status="success",
                     message="No active symbols found to update", 
-                    processed_count=0,
-                    success_count=0,
-                    error_count=0,
-                    errors=[],
-                    execution_time_seconds=0.0
+                    total_symbols=0,
+                    batch_count=0,
+                    date_range={"from": "N/A", "to": "N/A"},
+                    timestamp=start_time.isoformat()
                 )
                 
             logger.info(f"Found {len(all_symbols)} active symbols")
@@ -123,11 +122,11 @@ async def daily_update(
             return CronDailyUpdateResponse(
                 status="success", 
                 message=f"Dry run completed. Would process {len(all_symbols)} symbols in batches of {batch_size}",
-                processed_count=len(all_symbols),
-                success_count=len(all_symbols),
-                error_count=0,
-                errors=[],
-                execution_time_seconds=execution_time
+                total_symbols=len(all_symbols),
+                batch_count=(len(all_symbols) + batch_size - 1) // batch_size,
+                date_range={"from": "2024-01-01", "to": "2024-12-31"},
+                timestamp=start_time.isoformat(),
+                batch_size=batch_size
             )
         
         # TODO: Implement actual batch processing for non-dry-run
@@ -138,11 +137,11 @@ async def daily_update(
         return CronDailyUpdateResponse(
             status="success",
             message=f"Processed {len(all_symbols)} symbols successfully (simulated)",
-            processed_count=len(all_symbols),
-            success_count=len(all_symbols),
-            error_count=0,
-            errors=[],
-            execution_time_seconds=execution_time
+            total_symbols=len(all_symbols),
+            batch_count=(len(all_symbols) + batch_size - 1) // batch_size,
+            date_range={"from": "2024-01-01", "to": "2024-12-31"},
+            timestamp=start_time.isoformat(),
+            batch_size=batch_size
         )
         
     except HTTPException:

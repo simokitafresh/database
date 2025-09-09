@@ -96,12 +96,12 @@ async def daily_update(
         
         # Get active symbols
         try:
-            symbols_data = await list_symbols(session, limit=1000, offset=0)
-            if not symbols_data or not symbols_data.get('symbols'):
-                logger.warning("No symbols found in database")
+            all_symbols = await list_symbols(session, active=True)
+            if not all_symbols:
+                logger.warning("No active symbols found in database")
                 return CronDailyUpdateResponse(
                     status="success",
-                    message="No symbols found to update",
+                    message="No active symbols found to update", 
                     processed_count=0,
                     success_count=0,
                     error_count=0,
@@ -109,10 +109,7 @@ async def daily_update(
                     execution_time_seconds=0.0
                 )
                 
-            all_symbols = symbols_data['symbols']
-            # Filter only active symbols (assuming is_active field exists)
-            active_symbols = [s for s in all_symbols if s.get('is_active', True)]
-            logger.info(f"Found {len(active_symbols)} active symbols out of {len(all_symbols)} total")
+            logger.info(f"Found {len(all_symbols)} active symbols")
             
         except Exception as symbols_error:
             logger.error(f"Failed to fetch symbols: {symbols_error}")
@@ -125,9 +122,9 @@ async def daily_update(
             execution_time = (datetime.utcnow() - start_time).total_seconds()
             return CronDailyUpdateResponse(
                 status="success", 
-                message=f"Dry run completed. Would process {len(active_symbols)} symbols in batches of {batch_size}",
-                processed_count=len(active_symbols),
-                success_count=len(active_symbols),
+                message=f"Dry run completed. Would process {len(all_symbols)} symbols in batches of {batch_size}",
+                processed_count=len(all_symbols),
+                success_count=len(all_symbols),
                 error_count=0,
                 errors=[],
                 execution_time_seconds=execution_time
@@ -140,9 +137,9 @@ async def daily_update(
         execution_time = (datetime.utcnow() - start_time).total_seconds()
         return CronDailyUpdateResponse(
             status="success",
-            message=f"Processed {len(active_symbols)} symbols successfully (simulated)",
-            processed_count=len(active_symbols),
-            success_count=len(active_symbols),
+            message=f"Processed {len(all_symbols)} symbols successfully (simulated)",
+            processed_count=len(all_symbols),
+            success_count=len(all_symbols),
             error_count=0,
             errors=[],
             execution_time_seconds=execution_time

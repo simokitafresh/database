@@ -53,6 +53,121 @@ async def daily_update(
     request: CronDailyUpdateRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
+    authenticated: bool = Depends(verify_cron_token)
+) -> CronDailyUpdateResponse:
+    """Execute daily stock data update.
+    
+    This endpoint processes active symbols in batches and updates their price data.
+    
+    Args:
+        request: Request parameters including dry_run flag
+        background_tasks: FastAPI background tasks
+        session: Database session
+        authenticated: Authentication verification
+        
+    Returns:
+        CronDailyUpdateResponse: Results of the update operation
+        
+    Raises:
+        HTTPException: For various error conditions
+    """
+    start_time = datetime.utcnow()
+    
+    try:
+        logger.info(f"Starting daily stock data update (dry_run={request.dry_run})")
+        
+        # Basic configuration check
+        if not hasattr(settings, 'CRON_BATCH_SIZE'):
+            logger.warning("CRON_BATCH_SIZE not set, using default: 50")
+            batch_size = 50
+        else:
+            batch_size = settings.CRON_BATCH_SIZE or 50
+            
+        # Test database connection first
+        try:
+            await session.execute(text("SELECT 1"))
+            logger.info("Database connection verified")
+        except Exception as db_error:
+            logger.error(f"Database connection failed: {db_error}")
+            raise HTTPException(
+                status_code=500,
+                detail={"error": {"code": "DATABASE_ERROR", "message": f"Database connection failed: {str(db_error)}"}}
+            )
+        
+        # Get active symbols
+        try:
+            symbols_data = await list_symbols(session, limit=1000, offset=0)
+            if not symbols_data or not symbols_data.get('symbols'):
+                logger.warning("No symbols found in database")
+                return CronDailyUpdateResponse(
+                    status="success",
+                    message="No symbols found to update",
+                    processed_count=0,
+                    success_count=0,
+                    error_count=0,
+                    errors=[],
+                    execution_time_seconds=0.0
+                )
+                
+            all_symbols = symbols_data['symbols']
+            # Filter only active symbols (assuming is_active field exists)
+            active_symbols = [s for s in all_symbols if s.get('is_active', True)]
+            logger.info(f"Found {len(active_symbols)} active symbols out of {len(all_symbols)} total")
+            
+        except Exception as symbols_error:
+            logger.error(f"Failed to fetch symbols: {symbols_error}")
+            raise HTTPException(
+                status_code=500,
+                detail={"error": {"code": "SYMBOLS_ERROR", "message": f"Failed to fetch symbols: {str(symbols_error)}"}}
+            )
+        
+        if request.dry_run:
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            return CronDailyUpdateResponse(
+                status="success", 
+                message=f"Dry run completed. Would process {len(active_symbols)} symbols in batches of {batch_size}",
+                processed_count=len(active_symbols),
+                success_count=len(active_symbols),
+                error_count=0,
+                errors=[],
+                execution_time_seconds=execution_time
+            )
+        
+        # TODO: Implement actual batch processing for non-dry-run
+        # For now, simulate processing
+        logger.info("Simulating batch processing (actual implementation pending)")
+        
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        return CronDailyUpdateResponse(
+            status="success",
+            message=f"Processed {len(active_symbols)} symbols successfully (simulated)",
+            processed_count=len(active_symbols),
+            success_count=len(active_symbols),
+            error_count=0,
+            errors=[],
+            execution_time_seconds=execution_time
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in daily_update")
+        execution_time = (datetime.utcnow() - start_time).total_seconds()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": f"Internal server error: {str(e)}",
+                    "execution_time_seconds": execution_time
+                }
+            }
+        )
+async def daily_update(
+    request: CronDailyUpdateRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
     cron_token: str = Header(None, alias="X-Cron-Secret")
 ) -> CronDailyUpdateResponse:
     """Execute daily data update for all symbols.

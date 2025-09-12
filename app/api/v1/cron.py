@@ -1,43 +1,16 @@
 """Cron job endpoints for scheduled data updates."""
 
 import logging
-from datetime import date, datetime,                return CronDailyUpdateResponse(
-                   return CronDailyUpdateResponse(
-                status="success", 
-                message=(
-                    f"Dry run completed. Would process {len(all_symbols)} symbols "
-                    f"in batches of {batch_size}"
-                ),
-                total_symbols=len(all_symbols),
-                batch_count=(len(all_symbols) + batch_size - 1) // batch_size,
-                date_range={"from": str(date_from), "to": str(date_to)},  # 実際の日付を使用
-                timestamp=start_time.isoformat(),
-                batch_size=batch_size,
-                job_ids=None,
-                estimated_completion_minutes=None,
-                failed_symbols=None,
-                success_count=None
-            ) status="success",
-                    message="No active symbols found to update", 
-                    total_symbols=0,
-                    batch_count=0,
-                    date_range={"from": "N/A", "to": "N/A"},
-                    timestamp=start_time.isoformat(),
-                    job_ids=None,
-                    estimated_completion_minutes=None,
-                    batch_size=None,
-                    failed_symbols=None,
-                    success_count=None
-                )ta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, HTTPException, Header, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from app.api.deps import get_session
 from app.core.config import settings
-from app.db.queries import ensure_coverage, list_symbols
+from app.db.queries import list_symbols, ensure_coverage
 from app.schemas.cron import CronDailyUpdateRequest, CronDailyUpdateResponse, CronStatusResponse
 
 router = APIRouter()
@@ -140,6 +113,11 @@ async def daily_update(
                     batch_count=0,
                     date_range={"from": "N/A", "to": "N/A"},
                     timestamp=start_time.isoformat(),
+                    job_ids=None,
+                    estimated_completion_minutes=None,
+                    batch_size=None,
+                    failed_symbols=None,
+                    success_count=None
                 )
 
             logger.info(f"Found {len(all_symbols)} active symbols")
@@ -188,6 +166,10 @@ async def daily_update(
                 date_range={"from": str(date_from), "to": str(date_to)},  # 実際の日付を使用
                 timestamp=start_time.isoformat(),
                 batch_size=batch_size,
+                job_ids=None,
+                estimated_completion_minutes=None,
+                failed_symbols=None,
+                success_count=None
             )
 
         # Actual data update processing

@@ -32,5 +32,9 @@ services:
         value: "50"
       - key: API_MAX_ROWS
         value: "1000000"
-      - key: PYTHON_VERSION
-        value: "3.12"
+      - key: CRON_SECRET_TOKEN
+        sync: false
+      - key: CRON_BATCH_SIZE
+        value: "50"
+      - key: CRON_UPDATE_DAYS
+        value: "7"

@@ -21,19 +21,38 @@ from app.core.middleware import RequestIDMiddleware
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Placeholder lifespan for future DB setup.
-
-    FastAPI requires an *asynchronous* generator when using
-    ``@asynccontextmanager``. Returning a synchronous generator causes
-    ``AttributeError('__anext__')`` during application startup. This async
-    variant ensures compatibility.
-    """
+    """アプリケーションライフサイクル管理"""
+    prefetch_service = None
     try:
-        # Startup hooks (e.g., schedule DB initialisation) would go here.
+        # 起動時の処理
+        logger.info("Starting application...")
+        
+        # プリフェッチサービス開始（ENABLE_CACHEがTrueの場合のみ）
+        if settings.ENABLE_CACHE:
+            try:
+                from app.services.prefetch_service import get_prefetch_service
+                prefetch_service = get_prefetch_service()
+                await prefetch_service.start()
+                logger.info(f"Prefetch service started for {len(prefetch_service.symbols)} symbols")
+            except ImportError:
+                logger.warning("Prefetch service not found, skipping...")
+            except Exception as e:
+                logger.error(f"Failed to start prefetch service: {e}")
+                # エラーが起きてもアプリは起動させる
+        
         yield
+        
     finally:
-        # Shutdown hooks (cleanup resources) would go here.
-        pass
+        # シャットダウン時の処理
+        logger.info("Shutting down application...")
+        
+        # プリフェッチサービス停止
+        if prefetch_service and settings.ENABLE_CACHE:
+            try:
+                await prefetch_service.stop()
+                logger.info("Prefetch service stopped")
+            except Exception as e:
+                logger.error(f"Error stopping prefetch service: {e}")
 
 
 app = FastAPI(lifespan=lifespan)

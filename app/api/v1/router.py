@@ -5,6 +5,7 @@ from .fetch import router as fetch_router
 from .prices import router as prices_router
 from .symbols import router as symbols_router
 from .cron import router as cron_router
+from .debug import router as debug_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(symbols_router)
@@ -12,6 +13,7 @@ router.include_router(prices_router)
 router.include_router(coverage_router)
 router.include_router(fetch_router)
 router.include_router(cron_router)
+router.include_router(debug_router)
 
 
 @router.get("/health")

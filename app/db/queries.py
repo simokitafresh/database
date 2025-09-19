@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import inspect
 from datetime import date, timedelta
@@ -550,10 +551,110 @@ async def list_symbols(session: AsyncSession, active: bool | None = None) -> Seq
     return [dict(row._mapping) for row in rows]
 
 
+async def ensure_coverage_parallel(
+    session: AsyncSession,
+    symbols: Sequence[str],
+    date_from: date,
+    date_to: date,
+    refetch_days: int,
+) -> None:
+    """
+    複数銘柄のカバレッジを並行確認・取得する新規関数
+    既存のensure_coverage関数の並行版
+    
+    Parameters:
+    -----------
+    session: データベースセッション
+    symbols: 銘柄リスト
+    date_from: 開始日
+    date_to: 終了日  
+    refetch_days: 再取得日数（既定30日）
+    """
+    logger = logging.getLogger(__name__)
+    
+    async def process_single_symbol(symbol: str):
+        """単一銘柄の処理（既存のensure_coverageのロジックを利用）"""
+        try:
+            # アドバイザリロック取得
+            await with_symbol_lock(session, symbol)
+            
+            # 一度だけフル履歴を確保
+            await _ensure_full_history_once(session, symbol)
+            
+            # カバレッジ確認
+            cov = await _get_coverage(session, symbol, date_from, date_to)
+            
+            last_date = cov.get("last_date")
+            first_date = cov.get("first_date") 
+            has_gaps = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
+            first_missing_weekday = cov.get("first_missing_weekday")
+            
+            # 取得範囲の決定（既存のロジックを使用）
+            fetch_ranges = []
+            
+            # 最新データの再取得
+            if last_date and date_to >= last_date:
+                days_since_last = (date_to - last_date).days
+                if days_since_last > 1:
+                    refetch_start = max(date_from, last_date - timedelta(days=refetch_days))
+                    if refetch_start <= date_to:
+                        fetch_ranges.append((refetch_start, date_to))
+            
+            # ギャップの埋め込み
+            if has_gaps and first_missing_weekday:
+                gap_end = first_date if first_date else date_to
+                gap_start = max(date_from, first_missing_weekday)
+                if gap_start < gap_end:
+                    fetch_ranges.append((gap_start, min(gap_end, date_to)))
+            
+            # 初期データ
+            if not first_date:
+                fetch_ranges.append((date_from, date_to))
+            
+            if not fetch_ranges:
+                logger.debug(f"No fetch needed for {symbol}")
+                return
+            
+            # 範囲をマージ
+            fetch_ranges.sort()
+            merged_ranges = [fetch_ranges[0]] if fetch_ranges else []
+            for start, end in fetch_ranges[1:]:
+                last_start, last_end = merged_ranges[-1]
+                if start <= last_end + timedelta(days=1):
+                    merged_ranges[-1] = (last_start, max(last_end, end))
+                else:
+                    merged_ranges.append((start, end))
+            
+            # データ取得とUPSERT（既存の関数を利用）
+            for start, end in merged_ranges:
+                df = await fetch_prices_df(symbol, start, end)
+                if df is None or df.empty:
+                    continue
+                    
+                rows = df_to_rows(df, symbol=symbol, source="yfinance")
+                if not rows:
+                    continue
+                    
+                up_sql = text(upsert_prices_sql())
+                await session.execute(up_sql, rows)
+                logger.debug(f"Upserted {len(rows)} rows for {symbol}")
+                
+        except Exception as e:
+            logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+    
+    # 並行処理（最大10銘柄ずつ）
+    chunk_size = min(10, settings.YF_REQ_CONCURRENCY)
+    for i in range(0, len(symbols), chunk_size):
+        chunk = symbols[i:i+chunk_size]
+        tasks = [process_single_symbol(s) for s in chunk]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 __all__ = [
     "ensure_coverage",
     "ensure_coverage_unified",  # 追加
     "ensure_coverage_with_auto_fetch",  # 追加
+    "ensure_coverage_parallel",  # 追加
     "find_earliest_available_date",  # 追加
     "get_prices_resolved",
     "list_symbols",

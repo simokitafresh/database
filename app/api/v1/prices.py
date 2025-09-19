@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -124,20 +124,68 @@ async def get_prices(
     except Exception:
         pass
 
-    if auto_fetch:
-        # 新機能：最古日から全データ自動取得
-        fetch_meta = await queries.ensure_coverage_with_auto_fetch(
-            session=session,
-            symbols=symbols_list,
-            date_from=date_from,
-            date_to=effective_to,
-            refetch_days=settings.YF_REFETCH_DAYS,
-        )
-
-        if fetch_meta.get("adjustments"):
-            logger.info(f"Date adjustments applied: {fetch_meta['adjustments']}")
+    # === ここから新規追加 ===
+    cached_results = []
+    uncached_symbols = []
+    
+    # キャッシュチェック（ENABLE_CACHEがTrueの場合のみ）
+    if settings.ENABLE_CACHE:
+        try:
+            from app.services.cache import get_cache
+            cache = get_cache()
+            
+            for symbol in symbols_list:
+                # キャッシュキーの生成（シンボル、期間で一意）
+                cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
+                cached_data = await cache.get(cache_key)
+                
+                if cached_data:
+                    # キャッシュヒット
+                    cached_results.extend(cached_data)
+                    logger.debug(f"Cache hit for {symbol}")
+                else:
+                    # キャッシュミス
+                    uncached_symbols.append(symbol)
+                    logger.debug(f"Cache miss for {symbol}")
+            
+            # 全てキャッシュにあれば即座に返却
+            if not uncached_symbols:
+                logger.info(f"All {len(symbols_list)} symbols from cache")
+                return cached_results
+                
+        except ImportError:
+            # キャッシュモジュールがない場合は全て取得
+            uncached_symbols = symbols_list
+        except Exception as e:
+            logger.warning(f"Cache check failed: {e}")
+            uncached_symbols = symbols_list
     else:
-        # 従来の動作（自動取得なし）
+        uncached_symbols = symbols_list
+    
+    # === 並行処理版の使用（TASK-007の成果を利用） ===
+    if auto_fetch and uncached_symbols:
+        # ensure_coverage_parallelが存在すれば使用、なければ通常版
+        try:
+            from app.db.queries import ensure_coverage_parallel
+            await ensure_coverage_parallel(
+                session=session,
+                symbols=uncached_symbols,
+                date_from=date_from,
+                date_to=effective_to,
+                refetch_days=settings.YF_REFETCH_DAYS,
+            )
+            logger.info(f"Used parallel coverage for {len(uncached_symbols)} symbols")
+        except ImportError:
+            # 並行版がなければ既存の逐次版を使用
+            await queries.ensure_coverage(
+                session=session,
+                symbols=uncached_symbols,
+                date_from=date_from,
+                date_to=effective_to,
+                refetch_days=settings.YF_REFETCH_DAYS,
+            )
+    else:
+        # 自動取得なしの場合
         await queries.ensure_coverage(
             session=session,
             symbols=symbols_list,
@@ -147,16 +195,37 @@ async def get_prices(
         )
 
     # 2) 透過解決済み結果を取得
-    rows = await queries.get_prices_resolved(
-        session=session,
-        symbols=symbols_list,
-        date_from=date_from,
-        date_to=effective_to,
-    )
+    rows = []
+    for symbol in uncached_symbols:
+        symbol_rows = await queries.get_prices_resolved(
+            session=session,
+            symbols=[symbol],
+            date_from=date_from,
+            date_to=effective_to,
+        )
+        rows.extend(symbol_rows)
+        
+        # キャッシュに保存（ENABLE_CACHEがTrueの場合）
+        if settings.ENABLE_CACHE and symbol_rows:
+            try:
+                cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
+                await cache.set(cache_key, symbol_rows)
+                logger.debug(f"Cached {len(symbol_rows)} rows for {symbol}")
+            except Exception as e:
+                logger.warning(f"Failed to cache {symbol}: {e}")
+    
+    # キャッシュ済みと新規取得を結合
+    if cached_results:
+        rows.extend(cached_results)
+    
+    # ソート（日付、シンボル順）
+    rows.sort(key=lambda r: (r["date"], r["symbol"]))
 
     if len(rows) > settings.API_MAX_ROWS:
         raise HTTPException(status_code=413, detail="response too large")
     dt_ms = int((time.perf_counter() - t0) * 1000)
+    cache_hit_count = len(cached_results) if settings.ENABLE_CACHE else 0
+    
     logger.info(
         "prices served",
         extra=dict(
@@ -165,6 +234,8 @@ async def get_prices(
             date_to=str(effective_to),
             rows=len(rows),
             duration_ms=dt_ms,
+            cache_hits=cache_hit_count,
+            cache_hit_ratio=cache_hit_count/len(symbols_list) if symbols_list else 0,
         ),
     )
     return rows
@@ -270,7 +341,7 @@ async def delete_prices(
                 "date_from": str(date_from) if date_from else None,
                 "date_to": str(date_to) if date_to else None,
                 "query": query,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
         
@@ -289,7 +360,7 @@ async def delete_prices(
                 "deleted_rows": deleted_rows,
                 "date_from": str(date_from) if date_from else None,
                 "date_to": str(date_to) if date_to else None,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
         
@@ -300,7 +371,7 @@ async def delete_prices(
                 "from": date_from.isoformat() if date_from else None,
                 "to": date_to.isoformat() if date_to else None
             },
-            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
             "message": f"Successfully deleted {deleted_rows} price records"
         }
         
@@ -320,7 +391,7 @@ async def delete_prices(
                     "message": "Failed to delete price data",
                     "details": {
                         "symbol": symbol,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     }
                 }
             }

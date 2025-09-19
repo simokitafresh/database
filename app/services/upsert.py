@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Tuple, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy import text
@@ -47,7 +47,7 @@ def _normalize_price_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "close": c if lo <= c <= hi else (lo if abs(c - lo) < abs(c - hi) else hi),
         "volume": vol,
         "source": row.get("source", "yfinance"),
-        "last_updated": row.get("last_updated") or datetime.utcnow(),
+        "last_updated": row.get("last_updated") or datetime.now(timezone.utc),
     }
     return normalized
 
@@ -97,7 +97,7 @@ def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, 
                 "close": c if lo <= c <= hi else (lo if abs(c - lo) < abs(c - hi) else hi),
                 "volume": vol,
                 "source": source,
-                "last_updated": datetime.utcnow(),
+                "last_updated": datetime.now(timezone.utc),
             }
         )
     return rows

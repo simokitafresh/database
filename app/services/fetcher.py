@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 from urllib.error import HTTPError as URLlibHTTPError
 from contextlib import redirect_stdout, redirect_stderr
 import io
@@ -12,6 +13,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 from requests.exceptions import HTTPError as RequestsHTTPError
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 
@@ -152,4 +154,58 @@ def fetch_prices(
             raise
 
 
-__all__ = ["fetch_prices"]
+async def fetch_prices_batch(
+    symbols: List[str],
+    start: date,
+    end: date,
+    settings: Settings
+) -> Dict[str, pd.DataFrame]:
+    """
+    複数銘柄を並行取得する新規関数
+    
+    Parameters:
+    -----------
+    symbols: 銘柄リスト（例: ["AAPL", "MSFT", "^VIX"]）
+    start: 開始日
+    end: 終了日
+    settings: アプリケーション設定（YF_REQ_CONCURRENCY等を含む）
+    
+    Returns:
+    --------
+    Dict[str, pd.DataFrame]: 銘柄名をキー、DataFrameを値とする辞書
+    """
+    
+    async def fetch_one(symbol: str) -> Tuple[str, Optional[pd.DataFrame]]:
+        """単一銘柄を非同期で取得"""
+        try:
+            # 既存のfetch_prices関数を別スレッドで実行
+            df = await run_in_threadpool(
+                fetch_prices, 
+                symbol, 
+                start, 
+                end, 
+                settings=settings
+            )
+            return symbol, df
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to fetch {symbol}: {e}")
+            return symbol, None
+    
+    # セマフォで同時接続数を制御（YF_REQ_CONCURRENCYの値を使用）
+    semaphore = asyncio.Semaphore(settings.YF_REQ_CONCURRENCY)
+    
+    async def fetch_with_semaphore(symbol: str):
+        """セマフォで並行数を制限しながら取得"""
+        async with semaphore:
+            return await fetch_one(symbol)
+    
+    # 全銘柄を並行処理
+    tasks = [fetch_with_semaphore(s) for s in symbols]
+    results = await asyncio.gather(*tasks)
+    
+    # 成功したものだけ辞書に格納
+    return {symbol: df for symbol, df in results if df is not None and not df.empty}
+
+
+__all__ = ["fetch_prices", "fetch_prices_batch"]

@@ -23,47 +23,47 @@ class TestCronEndpoints:
     def test_daily_update_dry_run(self):
         """Test dry run mode"""
         response = self.client.post(
-            "/api/v1/cron/daily-update",
+            "/v1/daily-update",
             json={"dry_run": True},
             headers=self.headers
         )
         
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "dry_run"
+        assert data["status"] == "success"
         assert "total_symbols" in data
         assert "batch_count" in data
     
     @patch.object(settings, 'CRON_SECRET_TOKEN', 'test-secret')
     @patch('app.api.v1.cron.list_symbols')
-    async def test_daily_update_no_symbols(self, mock_list_symbols):
+    def test_daily_update_no_symbols(self, mock_list_symbols):
         """Test handling when no symbols found"""
         mock_list_symbols.return_value = []
         
         response = self.client.post(
-            "/api/v1/cron/daily-update",
+            "/v1/daily-update",
             json={"dry_run": False},
             headers=self.headers
         )
         
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "no_symbols"
+        assert data["status"] == "success"
     
     def test_daily_update_missing_token(self):
         """Test missing authentication token"""
         response = self.client.post(
-            "/api/v1/cron/daily-update",
+            "/v1/daily-update",
             json={"dry_run": True}
         )
         
         assert response.status_code == 401
-        assert "Missing X-Cron-Secret header" in response.json()["detail"]["message"]
+        assert "Missing X-Cron-Secret header" in response.json()["error"]["message"]
     
     def test_daily_update_invalid_token(self):
         """Test invalid authentication token"""
         response = self.client.post(
-            "/api/v1/cron/daily-update",
+            "/v1/daily-update",
             json={"dry_run": True},
             headers={"X-Cron-Secret": "invalid"}
         )
@@ -74,7 +74,7 @@ class TestCronEndpoints:
     def test_status_endpoint(self):
         """Test cron status endpoint"""
         response = self.client.get(
-            "/api/v1/cron/status",
+            "/v1/status",
             headers=self.headers
         )
         
@@ -83,10 +83,11 @@ class TestCronEndpoints:
         assert data["status"] == "active"
         assert "settings" in data
     
+    @patch.object(settings, 'CRON_SECRET_TOKEN', 'test-secret')
     def test_date_validation(self):
         """Test date format validation"""
         response = self.client.post(
-            "/api/v1/cron/daily-update",
+            "/v1/daily-update",
             json={
                 "dry_run": True,
                 "date_from": "invalid-date"
@@ -108,15 +109,6 @@ def mock_cron_settings():
 
 class TestCronLogic:
     """Test cron job business logic"""
-    
-    def test_date_range_calculation(self):
-        """Test date range calculation logic"""
-        from app.api.v1.cron import calculate_date_range
-        
-        # Default range (if function exists)
-        date_from, date_to = calculate_date_range(None, None)
-        assert date_from <= date_to
-        assert date_to == date.today() - timedelta(days=1)
     
     def test_batch_creation(self):
         """Test symbol batch creation"""

@@ -48,26 +48,26 @@ _KNOWN_EXCHANGE_SUFFIXES: Set[str] = {
 
 def normalize_symbol(symbol: Optional[str]) -> str:
     """Normalize ticker symbols to Yahoo Finance style.
-
-    Rules
-    -----
-    * Strip surrounding whitespace and uppercase the symbol.
-    * If the symbol contains a suffix (``."``):
-        - If the suffix is a known exchange code, preserve the ``."``.
-        - Else if the suffix is a single alphabetic character, treat it as a
-          share class and replace the ``."`` with ``-``.
-        - Otherwise, keep the symbol unchanged (e.g., preferred shares with
-          multiple dots).
-    * If ``symbol`` is ``None`` or empty, return an empty string.
+    
+    現在の仕様:
+    - BRK.B → BRK-B (クラス株変換)
+    - 取引所サフィックス (.TO等) は維持
+    
+    追加仕様:
+    - ^VIX等の指数シンボルはそのまま維持
     """
-
     if not symbol:
         return ""
-
+    
     s = symbol.strip().upper()
     if not s:
         return ""
-
+    
+    # 新規追加: 特殊シンボル（^で始まる指数）はそのまま維持
+    if s.startswith("^"):
+        return s
+    
+    # 既存のロジック（ドット処理）
     if "." in s:
         head, tail = s.rsplit(".", 1)
         if tail in _KNOWN_EXCHANGE_SUFFIXES:
@@ -75,5 +75,5 @@ def normalize_symbol(symbol: Optional[str]) -> str:
         if len(tail) == 1 and tail.isalpha():
             return f"{head}-{tail}"
         return s
-
+    
     return s

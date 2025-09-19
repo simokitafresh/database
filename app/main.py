@@ -17,6 +17,7 @@ from app.api.v1.router import router as v1_router
 from app.core.config import settings
 from app.core.cors import create_cors_middleware
 from app.core.middleware import RequestIDMiddleware
+from app.core.logging import logger
 
 
 @asynccontextmanager

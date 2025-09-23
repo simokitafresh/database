@@ -107,13 +107,20 @@ from app.services.profiling import profile_function
 @profile_function("get_prices_api")
 async def get_prices(
     symbols: str = Query(..., description="Comma-separated symbols"),
-    date_from: date = Query(..., alias="from"),
-    date_to: date = Query(..., alias="to"),
+    date_from: str = Query(..., alias="from", description="Start date (YYYY-MM-DD)"),
+    date_to: str = Query(..., alias="to", description="End date (YYYY-MM-DD)"),
     auto_fetch: bool = Query(True, description="Auto-fetch all available data if missing"),  # 追加
     session=Depends(get_session),
 ):
+    # Parse dates
+    try:
+        date_from_parsed = date.fromisoformat(date_from)
+        date_to_parsed = date.fromisoformat(date_to)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"Invalid date format: {e}")
+    
     # --- validation ---
-    if date_to < date_from:
+    if date_to_parsed < date_from_parsed:
         raise HTTPException(status_code=422, detail="invalid date range")
     symbols_list = _parse_and_validate_symbols(symbols)
     if not symbols_list:
@@ -128,7 +135,7 @@ async def get_prices(
     # 1) 欠損カバレッジを確認し、不足分＋直近N日を取得してUPSERT（冪等）
     t0 = time.perf_counter()
     # Clamp future 'to' to today to avoid yfinance/pandas overflow
-    effective_to = date_to
+    effective_to = date_to_parsed
     try:
         today = date.today()
         if effective_to > today:
@@ -147,7 +154,7 @@ async def get_prices(
             cache = get_cache()
             
             # 単一のバッチキャッシュキーを作成（N+1問題の解決）
-            batch_cache_key = f"prices:batch:{','.join(sorted(symbols_list))}:{date_from}:{effective_to}"
+            batch_cache_key = f"prices:batch:{','.join(sorted(symbols_list))}:{date_from_parsed}:{effective_to}"
             cached_batch_data = await cache.get(batch_cache_key)
             
             if cached_batch_data:
@@ -156,7 +163,7 @@ async def get_prices(
                 logger.info(f"Batch cache hit for {len(symbols_list)} symbols")
             else:
                 # バッチキャッシュミス - 個別キャッシュをチェック
-                cache_keys = [f"prices:{symbol}:{date_from}:{effective_to}" for symbol in symbols_list]
+                cache_keys = [f"prices:{symbol}:{date_from_parsed}:{effective_to}" for symbol in symbols_list]
                 cached_data_dict = await cache.get_multi(cache_keys)
                 
                 # キャッシュヒット/ミスを分類
@@ -195,7 +202,7 @@ async def get_prices(
             await ensure_coverage_parallel(
                 session=session,
                 symbols=uncached_symbols,
-                date_from=date_from,
+                date_from=date_from_parsed,
                 date_to=effective_to,
                 refetch_days=settings.YF_REFETCH_DAYS,
             )
@@ -214,7 +221,7 @@ async def get_prices(
         await queries.ensure_coverage(
             session=session,
             symbols=symbols_list,
-            date_from=date_from,
+            date_from=date_from_parsed,
             date_to=effective_to,
             refetch_days=settings.YF_REFETCH_DAYS,
         )
@@ -227,14 +234,14 @@ async def get_prices(
         symbol_rows = await queries.get_prices_resolved(
             session=session,
             symbols=[symbol],
-            date_from=date_from,
+            date_from=date_from_parsed,
             date_to=effective_to,
         )
         rows.extend(symbol_rows)
         
         # キャッシュ更新データを準備（ENABLE_CACHEがTrueの場合）
         if settings.ENABLE_CACHE and symbol_rows:
-            cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
+            cache_key = f"prices:{symbol}:{date_from_parsed}:{effective_to}"
             cache_updates[cache_key] = symbol_rows
     
     # バッチキャッシュ保存（TASK-SPD-005: Redisパイプラインを使用）
@@ -263,7 +270,7 @@ async def get_prices(
         "prices served",
         extra=dict(
             symbols=symbols_list,
-            date_from=str(date_from),
+            date_from=str(date_from_parsed),
             date_to=str(effective_to),
             rows=len(rows),
             duration_ms=dt_ms,
@@ -277,8 +284,8 @@ async def get_prices(
 @router.delete("/prices/{symbol}")
 async def delete_prices(
     symbol: str,
-    date_from: Optional[date] = Query(None, description="Start date for deletion (inclusive)"),
-    date_to: Optional[date] = Query(None, description="End date for deletion (inclusive)"),
+    date_from: Optional[str] = Query(None, description="Start date for deletion (inclusive)"),
+    date_to: Optional[str] = Query(None, description="End date for deletion (inclusive)"),
     confirm: bool = Query(False, description="Confirmation flag to prevent accidental deletion"),
     session: AsyncSession = Depends(get_session)
 ) -> Dict[str, Any]:
@@ -320,6 +327,10 @@ async def delete_prices(
         # Normalize symbol
         normalized_symbol = normalize_symbol(symbol)
         
+        # Parse dates
+        date_from_parsed = date.fromisoformat(date_from) if date_from else None
+        date_to_parsed = date.fromisoformat(date_to) if date_to else None
+        
         # Require confirmation
         if not confirm:
             raise HTTPException(
@@ -330,8 +341,8 @@ async def delete_prices(
                         "message": "Deletion requires confirmation. Set 'confirm=true' to proceed.",
                         "details": {
                             "symbol": normalized_symbol,
-                            "date_from": date_from.isoformat() if date_from else None,
-                            "date_to": date_to.isoformat() if date_to else None,
+                            "date_from": date_from_parsed.isoformat() if date_from_parsed else None,
+                            "date_to": date_to_parsed.isoformat() if date_to_parsed else None,
                             "warning": "This operation permanently deletes data and cannot be undone!"
                         }
                     }
@@ -339,7 +350,7 @@ async def delete_prices(
             )
         
         # Validate date range
-        if date_from and date_to and date_from > date_to:
+        if date_from_parsed and date_to_parsed and date_from_parsed > date_to_parsed:
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -347,8 +358,8 @@ async def delete_prices(
                         "code": "INVALID_DATE_RANGE",
                         "message": "date_from must be before or equal to date_to",
                         "details": {
-                            "date_from": date_from.isoformat(),
-                            "date_to": date_to.isoformat()
+                            "date_from": date_from_parsed.isoformat(),
+                            "date_to": date_to_parsed.isoformat()
                         }
                     }
                 }
@@ -358,21 +369,21 @@ async def delete_prices(
         query = "DELETE FROM prices WHERE symbol = :symbol"
         params = {"symbol": normalized_symbol}
         
-        if date_from:
+        if date_from_parsed:
             query += " AND date >= :date_from"
-            params["date_from"] = date_from
+            params["date_from"] = date_from_parsed
         
-        if date_to:
+        if date_to_parsed:
             query += " AND date <= :date_to"
-            params["date_to"] = date_to
+            params["date_to"] = date_to_parsed
         
         # Log the deletion attempt
         logger.warning(
             f"Price data deletion requested for symbol {normalized_symbol}",
             extra={
                 "symbol": normalized_symbol,
-                "date_from": str(date_from) if date_from else None,
-                "date_to": str(date_to) if date_to else None,
+                "date_from": str(date_from_parsed) if date_from_parsed else None,
+                "date_to": str(date_to_parsed) if date_to_parsed else None,
                 "query": query,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
@@ -391,8 +402,8 @@ async def delete_prices(
             extra={
                 "symbol": normalized_symbol,
                 "deleted_rows": deleted_rows,
-                "date_from": str(date_from) if date_from else None,
-                "date_to": str(date_to) if date_to else None,
+                "date_from": str(date_from_parsed) if date_from_parsed else None,
+                "date_to": str(date_to_parsed) if date_to_parsed else None,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
@@ -401,8 +412,8 @@ async def delete_prices(
             "symbol": normalized_symbol,
             "deleted_rows": deleted_rows,
             "date_range": {
-                "from": date_from.isoformat() if date_from else None,
-                "to": date_to.isoformat() if date_to else None
+                "from": date_from_parsed.isoformat() if date_from_parsed else None,
+                "to": date_to_parsed.isoformat() if date_to_parsed else None
             },
             "deleted_at": datetime.now(timezone.utc).isoformat(),
             "message": f"Successfully deleted {deleted_rows} price records"

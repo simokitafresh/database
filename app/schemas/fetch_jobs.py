@@ -23,10 +23,10 @@ class FetchJobRequest(BaseModel):
         
         # Validate symbol format
         import re
-        symbol_pattern = re.compile(r'^[A-Z0-9.-]{1,20}$')
+        symbol_pattern = re.compile(r'^[\^A-Z0-9.-]{1,20}$')
         for symbol in v:
             if not symbol_pattern.match(symbol.upper()):
-                raise ValueError(f'Invalid symbol format: {symbol}. Must be alphanumeric with dots/dashes (max 20 chars)')
+                raise ValueError(f'Invalid symbol format: {symbol}. Must be alphanumeric with dots/dashes/caret (max 20 chars)')
         
         # Remove duplicates and convert to uppercase
         return list(dict.fromkeys([s.upper() for s in v]))

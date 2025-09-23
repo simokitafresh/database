@@ -48,3 +48,38 @@ async def test_fetch_job_creation_triggers_background(async_client, fastapi_app,
         force=False,
         max_concurrency=2,
     )
+
+
+@pytest.mark.asyncio
+async def test_fetch_job_creation_with_caret_symbol(async_client, fastapi_app, dummy_session, monkeypatch):
+    """Test that symbols with caret (^) like ^VIX are accepted."""
+    mocked_create_job = AsyncMock(return_value="job-456")
+    mocked_process_job = AsyncMock()
+    monkeypatch.setattr("app.api.v1.fetch.create_fetch_job", mocked_create_job)
+    monkeypatch.setattr("app.api.v1.fetch.process_fetch_job", mocked_process_job)
+
+    async def override_session():
+        yield dummy_session
+
+    fastapi_app.dependency_overrides[get_session] = override_session
+
+    payload = {
+        "symbols": ["^VIX", "AAPL"],
+        "date_from": "2024-01-01",
+        "date_to": "2024-06-01",
+        "interval": "1d",
+        "force": False,
+        "priority": "normal"
+    }
+
+    response = await async_client.post("/v1/fetch", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == "job-456"
+    assert body["status"] == "pending"
+    assert body["symbols_count"] == 2
+    assert body["date_range"] == {"from": "2024-01-01", "to": "2024-06-01"}
+
+    assert mocked_create_job.await_args.args[0] is dummy_session
+    assert mocked_create_job.await_args.args[1].symbols == ["^VIX", "AAPL"]

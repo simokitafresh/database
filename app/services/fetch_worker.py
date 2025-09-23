@@ -144,7 +144,7 @@ async def process_fetch_job(
             await save_job_results(session, job_id, processed_results)
 
             # Mark job as completed
-            final_status = "completed" if error_count == 0 else "completed_with_errors"
+            final_status = "completed" if error_count == 0 else "completed_errors"
             await update_job_status(session, job_id, final_status, completed_at=datetime.utcnow())
 
             logger.info(f"Job {job_id} completed: {success_count} success, {error_count} errors")

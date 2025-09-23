@@ -103,7 +103,7 @@ class FetchJobResult(BaseModel):
 class FetchJobResponse(BaseModel):
     """Complete fetch job information response."""
     job_id: str
-    status: str  # 'pending', 'processing', 'completed', 'failed', 'cancelled'
+    status: str  # 'pending', 'processing', 'completed', 'completed_errors', 'failed', 'cancelled'
     symbols: List[str]
     date_from: date
     date_to: date

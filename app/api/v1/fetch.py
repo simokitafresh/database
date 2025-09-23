@@ -54,7 +54,7 @@ async def create_fetch_job_endpoint(
     **Response:**
     Returns job information including:
     - **job_id**: Unique identifier for tracking the job
-    - **status**: Current job status ('pending', 'processing', 'completed', 'failed', 'cancelled')
+    - **status**: Current job status ('pending', 'processing', 'completed', 'completed_errors', 'failed', 'cancelled')
     - **symbols_count**: Number of symbols to process
     - **date_range**: Date range being fetched
     - **created_at**: Job creation timestamp
@@ -142,7 +142,7 @@ async def get_fetch_job_status(
     - 'pending': Job is queued for processing
     - 'processing': Job is currently running
     - 'completed': Job finished successfully
-    - 'completed_with_errors': Job finished but some symbols failed
+    - 'completed_errors': Job finished but some symbols failed
     - 'failed': Job failed completely
     - 'cancelled': Job was cancelled
     """
@@ -230,7 +230,7 @@ async def list_fetch_jobs(
         
         # Validate status if provided
         if status:
-            valid_statuses = ['pending', 'processing', 'completed', 'completed_with_errors', 'failed', 'cancelled']
+            valid_statuses = ['pending', 'processing', 'completed', 'completed_errors', 'failed', 'cancelled']
             if status not in valid_statuses:
                 raise HTTPException(
                     status_code=400,

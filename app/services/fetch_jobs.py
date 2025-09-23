@@ -2,7 +2,7 @@
 
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, timezone
 from typing import Optional, List, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,17 @@ from app.schemas.fetch_jobs import (
     FetchJobResult,
     FetchJobListResponse
 )
+
+
+def custom_json_decoder(obj):
+    """Custom JSON decoder to handle date objects."""
+    if isinstance(obj, str):
+        # Try to parse as date
+        try:
+            return date.fromisoformat(obj)
+        except ValueError:
+            pass
+    return obj
 
 
 async def create_fetch_job(
@@ -90,7 +101,7 @@ async def get_job_status(
     # Calculate duration if started
     duration_seconds = None
     if job.started_at:
-        end_time = job.completed_at or datetime.utcnow()
+        end_time = job.completed_at or datetime.now(timezone.utc)
         duration_seconds = int((end_time - job.started_at).total_seconds())
     
     # Parse progress JSON
@@ -243,6 +254,7 @@ async def list_jobs(
     Returns:
         List of jobs with total count
     """
+    
     # Build query conditions
     conditions = []
     params = {}
@@ -279,49 +291,72 @@ async def list_jobs(
     
     jobs = []
     for row in rows:
-        # Calculate duration
-        duration_seconds = None
-        if row.started_at:
-            end_time = row.completed_at or datetime.utcnow()
-            duration_seconds = int((end_time - row.started_at).total_seconds())
-        
-        # Parse JSON fields
-        progress = None
-        if row.progress:
-            progress_data = row.progress if isinstance(row.progress, dict) else json.loads(row.progress)
-            progress = FetchJobProgress(**progress_data)
-        
-        results = []
-        if row.results:
-            results_data = row.results if isinstance(row.results, list) else json.loads(row.results)
-            # Remove date fields that may cause JSON serialization issues
-            for r in results_data:
-                r.pop('date_from', None)
-                r.pop('date_to', None)
-            results = [FetchJobResult(**r) for r in results_data]
-        
-        errors = row.errors or []
-        
-        job_response = FetchJobResponse(
-            job_id=row.job_id,
-            status=row.status,
-            symbols=row.symbols,
-            date_from=row.date_from,
-            date_to=row.date_to,
-            interval=row.interval,
-            force=row.force_refresh,
-            priority=row.priority,
-            progress=progress,
-            results=results,
-            errors=errors,
-            created_at=row.created_at,
-            started_at=row.started_at,
-            completed_at=row.completed_at,
-            duration_seconds=duration_seconds,
-            created_by=row.created_by
-        )
-        
-        jobs.append(job_response)
+        try:
+            # Calculate duration
+            duration_seconds = None
+            if row.started_at:
+                end_time = row.completed_at or datetime.now(timezone.utc)
+                duration_seconds = int((end_time - row.started_at).total_seconds())
+            
+            # Parse JSON fields
+            progress = None
+            if row.progress:
+                progress_data = row.progress if isinstance(row.progress, dict) else json.loads(row.progress)
+                progress = FetchJobProgress(**progress_data)
+            
+            results = []
+            if row.results:
+                try:
+                    results_data = row.results if isinstance(row.results, list) else json.loads(row.results)
+                    # Remove date fields that may cause JSON serialization issues
+                    for r in results_data:
+                        # Handle date objects that might be in the data
+                        if 'date_from' in r and r['date_from'] is not None:
+                            if hasattr(r['date_from'], 'isoformat'):
+                                r['date_from'] = r['date_from'].isoformat()
+                            r.pop('date_from', None)  # Remove anyway
+                        else:
+                            r.pop('date_from', None)
+                        
+                        if 'date_to' in r and r['date_to'] is not None:
+                            if hasattr(r['date_to'], 'isoformat'):
+                                r['date_to'] = r['date_to'].isoformat()
+                            r.pop('date_to', None)  # Remove anyway
+                        else:
+                            r.pop('date_to', None)
+                    results = [FetchJobResult(**r) for r in results_data]
+                except (json.JSONDecodeError, TypeError, ValueError) as e:
+                    # Skip this job's results if parsing fails
+                    results = []
+            
+            errors = row.errors or []
+            
+            job_response = FetchJobResponse(
+                job_id=row.job_id,
+                status=row.status,
+                symbols=row.symbols,
+                date_from=row.date_from,
+                date_to=row.date_to,
+                interval=row.interval,
+                force=row.force_refresh,
+                priority=row.priority,
+                progress=progress,
+                results=results,
+                errors=errors,
+                created_at=row.created_at,
+                started_at=row.started_at,
+                completed_at=row.completed_at,
+                duration_seconds=duration_seconds,
+                created_by=row.created_by
+            )
+            
+            jobs.append(job_response)
+        except Exception as e:
+            # Log error but continue processing other jobs
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error processing job {row.job_id}: {e}")
+            continue
     
     return FetchJobListResponse(jobs=jobs, total=total)
 

@@ -18,7 +18,7 @@ numpy==2.3.2
 yfinance==0.2.65
 
 # Redis support (Standard plan)
-redis==5.0.1
+redis==6.4.0
 
 # CLI & HTTP Client
 typer==0.16.1

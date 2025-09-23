@@ -470,15 +470,65 @@ async def get_prices_resolved(
     date_from: date,
     date_to: date,
 ) -> List[dict]:
-    """Fetch price rows via the ``get_prices_resolved`` SQL function.
+    """Fetch price rows via direct SQL query for multiple symbols."""
 
-    The function accepts multiple symbols and returns a combined, sorted list
-    of dictionaries. Uses a single query for all symbols to avoid N+1 problem.
-    """
+    sql = text("""
+        SELECT DISTINCT
+            pr.symbol,
+            pr.date,
+            pr.open::double precision,
+            pr.high::double precision,
+            pr.low::double precision,
+            pr.close::double precision,
+            pr.volume,
+            pr.source,
+            pr.last_updated,
+            pr.source_symbol
+        FROM (
+            SELECT p.symbol,
+                   p.date,
+                   p.open,
+                   p.high,
+                   p.low,
+                   p.close,
+                   p.volume,
+                   p.source,
+                   p.last_updated,
+                   NULL::text AS source_symbol,
+                   sc.old_symbol,
+                   sc.new_symbol,
+                   sc.change_date
+              FROM prices p
+         LEFT JOIN symbol_changes sc ON sc.new_symbol = p.symbol
+             WHERE p.symbol = ANY(:symbols)
+               AND p.date BETWEEN :date_from AND :date_to
+               AND (sc.change_date IS NULL OR p.date >= sc.change_date)
 
-    # Use the updated batch function that accepts an array of symbols
-    sql = text("SELECT * FROM get_prices_resolved(:symbols, :date_from, :date_to)")
-    res = await session.execute(sql, {"symbols": postgresql.ARRAY(postgresql.TEXT)(list(symbols)), "date_from": date_from, "date_to": date_to})
+            UNION ALL
+
+            SELECT unnest(:symbols) AS symbol,
+                   p.date,
+                   p.open,
+                   p.high,
+                   p.low,
+                   p.close,
+                   p.volume,
+                   p.source,
+                   p.last_updated,
+                   p.symbol AS source_symbol,
+                   sc.old_symbol,
+                   sc.new_symbol,
+                   sc.change_date
+              FROM prices p
+              JOIN symbol_changes sc ON sc.old_symbol = p.symbol
+             WHERE sc.new_symbol = ANY(:symbols)
+               AND p.date BETWEEN :date_from AND :date_to
+               AND p.date < sc.change_date
+        ) pr
+        ORDER BY pr.symbol, pr.date;
+    """)
+    
+    res = await session.execute(sql, {"symbols": list(symbols), "date_from": date_from, "date_to": date_to})
     return [dict(m) for m in res.mappings().all()]
 
 

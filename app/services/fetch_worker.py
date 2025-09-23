@@ -206,8 +206,6 @@ async def fetch_symbol_data(
                 symbol=symbol,
                 status="no_data",
                 rows_fetched=0,
-                date_from=None,
-                date_to=None,
                 error="No data available for the specified date range",
             )
 
@@ -258,8 +256,6 @@ async def fetch_symbol_data(
                 symbol=symbol,
                 status="success",
                 rows_fetched=total_rows,
-                date_from=None,  # Remove date fields to avoid JSON serialization issues
-                date_to=None,
                 error=None,
             )
 
@@ -269,8 +265,6 @@ async def fetch_symbol_data(
             symbol=symbol,
             status="failed",
             rows_fetched=0,
-            date_from=None,
-            date_to=None,
             error="yfinance package not installed",
         )
     except Exception as e:
@@ -279,8 +273,6 @@ async def fetch_symbol_data(
             symbol=symbol,
             status="failed",
             rows_fetched=0,
-            date_from=None,
-            date_to=None,
             error=str(e),
         )
 

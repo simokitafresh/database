@@ -95,8 +95,6 @@ class FetchJobResult(BaseModel):
     symbol: str
     status: str  # 'success', 'failed', 'skipped'
     rows_fetched: int = 0
-    date_from: Optional[date] = None
-    date_to: Optional[date] = None
     error: Optional[str] = None
 
 

@@ -203,7 +203,13 @@ async def save_job_results(
         results: List of job results
         errors: List of errors (optional)
     """
-    results_data = [r.dict() for r in results]
+    results_data = []
+    for r in results:
+        result_dict = r.dict()
+        # Remove date fields to avoid JSON serialization issues
+        result_dict.pop('date_from', None)
+        result_dict.pop('date_to', None)
+        results_data.append(result_dict)
     errors_data = errors or []
     
     stmt = update(FetchJob).where(
@@ -288,6 +294,10 @@ async def list_jobs(
         results = []
         if row.results:
             results_data = row.results if isinstance(row.results, list) else json.loads(row.results)
+            # Remove date fields that may cause JSON serialization issues
+            for r in results_data:
+                r.pop('date_from', None)
+                r.pop('date_to', None)
             results = [FetchJobResult(**r) for r in results_data]
         
         errors = row.errors or []

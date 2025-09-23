@@ -99,7 +99,7 @@ import json
 import sys
 try:
     data = json.load(sys.stdin)
-    print(data.get('id', ''))
+    print(data.get('job_id', ''))
 except:
     print('')
 ")

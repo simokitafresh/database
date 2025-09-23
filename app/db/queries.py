@@ -517,16 +517,13 @@ async def get_prices_resolved(
     """Fetch price rows via the ``get_prices_resolved`` SQL function.
 
     The function accepts multiple symbols and returns a combined, sorted list
-    of dictionaries.
+    of dictionaries. Uses a single query for all symbols to avoid N+1 problem.
     """
 
-    out: List[dict] = []
-    sql = text("SELECT * FROM get_prices_resolved(:symbol, :date_from, :date_to)")
-    for s in symbols:
-        res = await session.execute(sql, {"symbol": s, "date_from": date_from, "date_to": date_to})
-        out.extend([dict(m) for m in res.mappings().all()])
-    out.sort(key=lambda r: (r["date"], r["symbol"]))
-    return out
+    # Use the updated batch function that accepts an array of symbols
+    sql = text("SELECT * FROM get_prices_resolved(:symbols, :date_from, :date_to)")
+    res = await session.execute(sql, {"symbols": list(symbols), "date_from": date_from, "date_to": date_to})
+    return [dict(m) for m in res.mappings().all()]
 
 
 LIST_SYMBOLS_SQL = (

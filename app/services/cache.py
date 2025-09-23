@@ -20,6 +20,7 @@ class RedisCache:
         self._fallback_cache: Dict[str, Tuple[Any, datetime]] = {}
         self._lock = RLock()
         self._redis_available = False
+        self._redis_warning_logged = False
 
     async def _ensure_redis(self) -> bool:
         """Check if Redis is available."""
@@ -31,9 +32,13 @@ class RedisCache:
                     self._redis_available = True
                     logger.info("Redis cache initialized")
                 else:
-                    logger.warning("Redis unavailable, using in-memory fallback")
+                    if not self._redis_warning_logged:
+                        logger.warning("Redis unavailable, using in-memory fallback")
+                        self._redis_warning_logged = True
             except Exception as e:
-                logger.warning(f"Redis check failed: {e}, using in-memory fallback")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis check failed: {e}, using in-memory fallback")
+                    self._redis_warning_logged = True
         return self._redis_available
 
     async def get(self, key: str) -> Optional[Any]:
@@ -50,7 +55,9 @@ class RedisCache:
                         except (json.JSONDecodeError, TypeError):
                             return value
             except Exception as e:
-                logger.warning(f"Redis get failed: {e}, falling back to memory")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis get failed: {e}, falling back to memory")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to in-memory cache
@@ -78,7 +85,9 @@ class RedisCache:
                     await client.setex(key, self._ttl, serialized_value)
                     return
             except Exception as e:
-                logger.warning(f"Redis set failed: {e}, falling back to memory")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis set failed: {e}, falling back to memory")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to in-memory cache
@@ -98,7 +107,9 @@ class RedisCache:
                     await client.delete(key)
                     return
             except Exception as e:
-                logger.warning(f"Redis delete failed: {e}")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis delete failed: {e}")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to in-memory cache
@@ -114,7 +125,9 @@ class RedisCache:
                     await client.flushdb()
                     return
             except Exception as e:
-                logger.warning(f"Redis clear failed: {e}")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis clear failed: {e}")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to in-memory cache
@@ -138,7 +151,9 @@ class RedisCache:
                                 result[key] = value
                     return result
             except Exception as e:
-                logger.warning(f"Redis mget failed: {e}, falling back to memory")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis mget failed: {e}, falling back to memory")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to individual gets
@@ -167,7 +182,9 @@ class RedisCache:
                     await pipeline.execute()
                     return
             except Exception as e:
-                logger.warning(f"Redis pipeline set failed: {e}, falling back to memory")
+                if not self._redis_warning_logged:
+                    logger.warning(f"Redis pipeline set failed: {e}, falling back to memory")
+                    self._redis_warning_logged = True
                 self._redis_available = False
 
         # Fallback to individual sets

@@ -17,13 +17,15 @@ logger = logging.getLogger(__name__)
 
 # Global Redis client instance
 _redis_client: Optional[redis.Redis] = None
+_redis_available: bool = False
+_redis_warning_logged: bool = False
 
 
 async def get_redis_client() -> redis.Redis:
     """Get or create Redis client instance."""
-    global _redis_client
+    global _redis_client, _redis_available, _redis_warning_logged
 
-    if _redis_client is None:
+    if _redis_client is None and not _redis_available:
         try:
             _redis_client = redis.Redis(
                 host=settings.REDIS_HOST,
@@ -37,12 +39,16 @@ async def get_redis_client() -> redis.Redis:
             )
             # Test connection
             await _redis_client.ping()
+            _redis_available = True
             logger.info("Redis connection established")
         except Exception as e:
-            logger.warning(f"Redis connection failed: {e}")
+            _redis_available = False
+            if not _redis_warning_logged:
+                logger.warning(f"Redis connection failed: {e}, using fallback mode")
+                _redis_warning_logged = True
             _redis_client = None
 
-    return _redis_client
+    return _redis_client if _redis_available else None
 
 
 async def close_redis_client():

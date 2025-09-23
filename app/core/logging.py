@@ -49,17 +49,19 @@ def configure_logging(level: int | str = logging.INFO) -> None:
     root.setLevel(level)
 
 
-# Error metrics collection
+# Error metrics collection with batch logging
 class ErrorMetrics:
-    """Simple error metrics collector for monitoring error patterns."""
+    """Simple error metrics collector for monitoring error patterns with batch logging."""
     
-    def __init__(self):
+    def __init__(self, batch_interval: float = 60.0):  # Log every 60 seconds
         self.errors = Counter()
         self.error_timestamps = defaultdict(list)
         self._lock = False  # Simple lock for thread safety
+        self._last_log_time = time.time()
+        self._batch_interval = batch_interval
     
     def record_error(self, error_type: str, context: Optional[Dict[str, Any]] = None) -> None:
-        """Record an error occurrence."""
+        """Record an error occurrence with batch logging."""
         if self._lock:
             return
         self._lock = True
@@ -70,8 +72,30 @@ class ErrorMetrics:
             # Keep only recent timestamps (last 100 per error type)
             if len(self.error_timestamps[error_type]) > 100:
                 self.error_timestamps[error_type] = self.error_timestamps[error_type][-100:]
+            
+            # Batch log errors periodically instead of logging each one
+            current_time = time.time()
+            if current_time - self._last_log_time > self._batch_interval:
+                self._log_batch_errors()
+                self._last_log_time = current_time
+                
         finally:
             self._lock = False
+    
+    def _log_batch_errors(self) -> None:
+        """Log accumulated errors in batch."""
+        if not self.errors:
+            return
+            
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Batch error summary",
+            extra={
+                "error_counts": dict(self.errors),
+                "total_errors": sum(self.errors.values()),
+                "unique_error_types": len(self.errors)
+            }
+        )
     
     def get_metrics(self) -> Dict[str, Any]:
         """Get current error metrics."""

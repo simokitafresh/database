@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
     
-    # Database connection pool settings
-    DB_POOL_SIZE: int = 10  # 2から変更
-    DB_MAX_OVERFLOW: int = 10  # 3から変更
+    # Database connection pool settings - optimized for Standard plan
+    DB_POOL_SIZE: int = 5  # Increased from 2 to 5 for better concurrency
+    DB_MAX_OVERFLOW: int = 5  # Increased from 3 to 5
     DB_POOL_PRE_PING: bool = True
     DB_POOL_RECYCLE: int = 900  # 1800から900に変更
     DB_ECHO: bool = False
@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     FETCH_JOB_CLEANUP_DAYS: int = 30
     FETCH_MAX_CONCURRENT_JOBS: int = 10
 
-    # Cache settings
-    CACHE_TTL_SECONDS: int = 60
+    # Cache settings - increased TTL for better hit rates
+    CACHE_TTL_SECONDS: int = 3600  # Increased from 60 to 3600 (1 hour)
     ENABLE_CACHE: bool = True
     PREFETCH_SYMBOLS: str = "TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD"
     PREFETCH_INTERVAL_MINUTES: int = 5

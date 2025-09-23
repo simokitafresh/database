@@ -101,7 +101,10 @@ async def ensure_symbols_registered(
             logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
 
 
+from app.services.profiling import profile_function
+
 @router.get("/prices", response_model=List[PriceRowOut])
+@profile_function("get_prices_api")
 async def get_prices(
     symbols: str = Query(..., description="Comma-separated symbols"),
     date_from: date = Query(..., alias="from"),
@@ -137,32 +140,43 @@ async def get_prices(
     cached_results = []
     uncached_symbols = []
     
-    # キャッシュチェック（ENABLE_CACHEがTrueの場合のみ）
+    # バッチキャッシュチェック（TASK-SPD-005: 複数シンボルのキャッシュをバッチでチェック）
     if settings.ENABLE_CACHE:
         try:
             from app.services.cache import get_cache
             cache = get_cache()
             
-            # バッチキャッシュチェック（TASK-SPD-005: 複数シンボルのキャッシュをバッチでチェック）
-            cache_keys = [f"prices:{symbol}:{date_from}:{effective_to}" for symbol in symbols_list]
-            cached_data_dict = await cache.get_multi(cache_keys)
+            # 単一のバッチキャッシュキーを作成（N+1問題の解決）
+            batch_cache_key = f"prices:batch:{','.join(sorted(symbols_list))}:{date_from}:{effective_to}"
+            cached_batch_data = await cache.get(batch_cache_key)
             
-            # キャッシュヒット/ミスを分類
-            for symbol, cache_key in zip(symbols_list, cache_keys):
-                cached_data = cached_data_dict.get(cache_key)
-                if cached_data:
-                    # キャッシュヒット
-                    cached_results.extend(cached_data)
-                    logger.debug(f"Cache hit for {symbol}")
-                else:
-                    # キャッシュミス
-                    uncached_symbols.append(symbol)
-                    logger.debug(f"Cache miss for {symbol}")
-            
-            # 全てキャッシュにあれば即座に返却
-            if not uncached_symbols:
-                logger.info(f"All {len(symbols_list)} symbols from cache")
-                return cached_results
+            if cached_batch_data:
+                # バッチキャッシュヒット
+                cached_results.extend(cached_batch_data)
+                logger.info(f"Batch cache hit for {len(symbols_list)} symbols")
+            else:
+                # バッチキャッシュミス - 個別キャッシュをチェック
+                cache_keys = [f"prices:{symbol}:{date_from}:{effective_to}" for symbol in symbols_list]
+                cached_data_dict = await cache.get_multi(cache_keys)
+                
+                # キャッシュヒット/ミスを分類
+                for symbol, cache_key in zip(symbols_list, cache_keys):
+                    cached_data = cached_data_dict.get(cache_key)
+                    if cached_data:
+                        # 個別キャッシュヒット
+                        cached_results.extend(cached_data)
+                        logger.debug(f"Individual cache hit for {symbol}")
+                    else:
+                        # キャッシュミス
+                        uncached_symbols.append(symbol)
+                        logger.debug(f"Cache miss for {symbol}")
+                
+                # 全て個別キャッシュにあれば即座に返却
+                if not uncached_symbols:
+                    logger.info(f"All {len(symbols_list)} symbols from individual cache")
+                    # バッチキャッシュに保存
+                    await cache.set(batch_cache_key, cached_results)
+                    return cached_results
                 
         except ImportError:
             # キャッシュモジュールがない場合は全て取得
@@ -227,6 +241,8 @@ async def get_prices(
     if settings.ENABLE_CACHE and cache_updates:
         try:
             await cache.set_multi(cache_updates)
+            # バッチキャッシュも保存
+            await cache.set(batch_cache_key, rows)
             logger.debug(f"Batch cached {len(cache_updates)} symbol results")
         except Exception as e:
             logger.warning(f"Failed to batch cache updates: {e}")
@@ -446,4 +462,18 @@ async def get_price_count(
     }
 
 
-__all__ = ["router", "get_prices", "delete_prices", "get_price_count"]
+@router.get("/performance/report")
+async def get_performance_report():
+    """Get performance profiling report for debugging bottlenecks."""
+    from app.services.profiling import get_profiler
+    
+    profiler = get_profiler()
+    report = profiler.get_performance_report()
+    
+    return {
+        "performance_report": report,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+__all__ = ["router", "get_prices", "delete_prices", "get_price_count", "get_performance_report"]

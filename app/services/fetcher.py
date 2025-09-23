@@ -282,7 +282,8 @@ async def fetch_prices_batch(
     symbols: List[str],
     start: date,
     end: date,
-    settings: Settings
+    settings: Settings,
+    use_streaming: bool = True  # メモリ効率のためにストリーミングをデフォルトに
 ) -> Dict[str, pd.DataFrame]:
     """
     複数銘柄を並行取得する新規関数
@@ -299,6 +300,14 @@ async def fetch_prices_batch(
     Dict[str, pd.DataFrame]: 銘柄名をキー、DataFrameを値とする辞書
     """
     with error_context("fetch_prices_batch", symbols=symbols, start=start, end=end):
+        # メモリ効率のためにストリーミングを使用
+        if use_streaming:
+            successful_results = {}
+            async for symbol, df in fetch_prices_streaming(symbols, start, end, settings):
+                successful_results[symbol] = df
+            return successful_results
+        
+        # 従来のメモリ集中型の実装（後方互換性のために残す）
         async def fetch_one(symbol: str) -> Tuple[str, Optional[pd.DataFrame]]:
             """単一銘柄を非同期で取得"""
             try:

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 import anyio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects import postgresql
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
@@ -477,7 +478,7 @@ async def get_prices_resolved(
 
     # Use the updated batch function that accepts an array of symbols
     sql = text("SELECT * FROM get_prices_resolved(:symbols, :date_from, :date_to)")
-    res = await session.execute(sql, {"symbols": list(symbols), "date_from": date_from, "date_to": date_to})
+    res = await session.execute(sql, {"symbols": postgresql.ARRAY(postgresql.TEXT)(list(symbols)), "date_from": date_from, "date_to": date_to})
     return [dict(m) for m in res.mappings().all()]
 
 

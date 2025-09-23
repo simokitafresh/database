@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
@@ -24,9 +24,8 @@ jobs:
         run: black --check .
       - name: Type check (mypy)
         run: mypy app || true
-      # Tests removed - production environment is tested directly on Render
-      # - name: Tests
-      #   env:
-      #     PYTHONPATH: .
-      #   run: pytest -q
+      - name: Tests
+        env:
+          PYTHONPATH: .
+        run: pytest --tb=short
 

@@ -26,7 +26,7 @@ async def process_fetch_job(
     date_to: date,
     interval: str = "1d",
     force: bool = False,
-    max_concurrency: int = 2,
+    max_concurrency: int = 1,  # Reduced to 1 for Supabase NullPool compatibility
 ) -> None:
     """
     Process a fetch job by downloading data for all symbols.
@@ -198,7 +198,6 @@ async def fetch_symbol_data(
             interval=interval,
             auto_adjust=True,
             prepost=False,
-            threads=True,
         )
 
         if df.empty:
@@ -207,8 +206,8 @@ async def fetch_symbol_data(
                 symbol=symbol,
                 status="no_data",
                 rows_fetched=0,
-                date_from=date_from,
-                date_to=date_to,
+                date_from=None,
+                date_to=None,
                 error="No data available for the specified date range",
             )
 
@@ -259,8 +258,8 @@ async def fetch_symbol_data(
                 symbol=symbol,
                 status="success",
                 rows_fetched=total_rows,
-                date_from=date_from,
-                date_to=date_to,
+                date_from=None,  # Remove date fields to avoid JSON serialization issues
+                date_to=None,
                 error=None,
             )
 
@@ -270,8 +269,8 @@ async def fetch_symbol_data(
             symbol=symbol,
             status="failed",
             rows_fetched=0,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=None,
+            date_to=None,
             error="yfinance package not installed",
         )
     except Exception as e:
@@ -280,8 +279,8 @@ async def fetch_symbol_data(
             symbol=symbol,
             status="failed",
             rows_fetched=0,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=None,
+            date_to=None,
             error=str(e),
         )
 

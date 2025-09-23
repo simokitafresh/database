@@ -124,16 +124,16 @@ def upsert_prices_sql() -> str:
 async def upsert_prices(
     session: AsyncSession,
     price_rows: List[Dict[str, Any]],
-    batch_size: int = 1000,
+    batch_size: int = 500,
     force_update: bool = False
 ) -> Tuple[int, int]:
     """
-    Optimized batch upsert of price data.
+    Optimized batch upsert of price data with memory-efficient processing.
     
     Args:
         session: Database session
         price_rows: List of price data dictionaries
-        batch_size: Number of rows to process per batch
+        batch_size: Number of rows to process per batch (reduced for memory efficiency)
         force_update: Whether to force update existing records
         
     Returns:
@@ -145,7 +145,7 @@ async def upsert_prices(
     total_inserted = 0
     total_updated = 0
     
-    # Process in batches for better memory usage
+    # Process in smaller batches for better memory usage
     for i in range(0, len(price_rows), batch_size):
         raw_batch = price_rows[i:i + batch_size]
         # Normalize and filter invalid rows defensively (covers callers that don't
@@ -182,6 +182,9 @@ async def upsert_prices(
             estimated_updated = affected_rows - estimated_inserted
             total_inserted += estimated_inserted
             total_updated += estimated_updated
+            
+        # Clear batch from memory
+        del raw_batch, batch
     
     return total_inserted, total_updated
 

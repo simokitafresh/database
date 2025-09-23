@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.db import queries
 from app.schemas.prices import PriceRowOut
 from app.services.normalize import normalize_symbol
-from app.services.auto_register import auto_register_symbol
+from app.services.auto_register import auto_register_symbol, batch_register_symbols
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ async def ensure_symbols_registered(
     symbols: List[str]
 ) -> None:
     """
-    Ensure all symbols are registered in the database.
+    Ensure all symbols are registered in the database with parallel processing.
     
     For each symbol:
     1. Check if already exists in database
@@ -73,23 +73,32 @@ async def ensure_symbols_registered(
     SymbolRegistrationError
         If database registration fails
     """
-    for symbol in symbols:
-        try:
-            success = await auto_register_symbol(session, symbol)
-            if success:
-                logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
-        except ValueError as e:
-            # Symbol doesn't exist in Yahoo Finance
-            logger.warning(f"Symbol validation failed: {e}")
-            raise SymbolNotFoundError(symbol, source="yfinance")
-        except RuntimeError as e:
-            # Database registration failed
-            logger.error(f"Symbol registration failed: {e}")
-            raise SymbolRegistrationError(symbol, str(e))
-        except Exception as e:
-            # Unexpected error
-            logger.error(f"Unexpected error in symbol registration for {symbol}: {e}", exc_info=True)
-            raise SymbolRegistrationError(symbol, f"Unexpected error: {str(e)}")
+    # Use batch registration for parallel processing
+    registration_results = await batch_register_symbols(session, symbols)
+    
+    # Check results and raise appropriate errors
+    for symbol, success in registration_results.items():
+        if not success:
+            # Check if it was a validation error or registration error
+            # Since batch_register_symbols catches exceptions, we need to re-validate
+            # to determine the exact error type
+            try:
+                # Try to register individually to get specific error
+                await auto_register_symbol(session, symbol)
+            except ValueError as e:
+                # Symbol doesn't exist in Yahoo Finance
+                logger.warning(f"Symbol validation failed: {e}")
+                raise SymbolNotFoundError(symbol, source="yfinance")
+            except RuntimeError as e:
+                # Database registration failed
+                logger.error(f"Symbol registration failed: {e}")
+                raise SymbolRegistrationError(symbol, str(e))
+            except Exception as e:
+                # Unexpected error
+                logger.error(f"Unexpected error in symbol registration for {symbol}: {e}", exc_info=True)
+                raise SymbolRegistrationError(symbol, f"Unexpected error: {str(e)}")
+        else:
+            logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
 
 
 @router.get("/prices", response_model=List[PriceRowOut])
@@ -134,11 +143,13 @@ async def get_prices(
             from app.services.cache import get_cache
             cache = get_cache()
             
-            for symbol in symbols_list:
-                # キャッシュキーの生成（シンボル、期間で一意）
-                cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
-                cached_data = await cache.get(cache_key)
-                
+            # バッチキャッシュチェック（TASK-SPD-005: 複数シンボルのキャッシュをバッチでチェック）
+            cache_keys = [f"prices:{symbol}:{date_from}:{effective_to}" for symbol in symbols_list]
+            cached_data_dict = await cache.get_multi(cache_keys)
+            
+            # キャッシュヒット/ミスを分類
+            for symbol, cache_key in zip(symbols_list, cache_keys):
+                cached_data = cached_data_dict.get(cache_key)
                 if cached_data:
                     # キャッシュヒット
                     cached_results.extend(cached_data)
@@ -196,6 +207,8 @@ async def get_prices(
 
     # 2) 透過解決済み結果を取得
     rows = []
+    cache_updates = {}  # バッチキャッシュ更新用
+    
     for symbol in uncached_symbols:
         symbol_rows = await queries.get_prices_resolved(
             session=session,
@@ -205,14 +218,18 @@ async def get_prices(
         )
         rows.extend(symbol_rows)
         
-        # キャッシュに保存（ENABLE_CACHEがTrueの場合）
+        # キャッシュ更新データを準備（ENABLE_CACHEがTrueの場合）
         if settings.ENABLE_CACHE and symbol_rows:
-            try:
-                cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
-                await cache.set(cache_key, symbol_rows)
-                logger.debug(f"Cached {len(symbol_rows)} rows for {symbol}")
-            except Exception as e:
-                logger.warning(f"Failed to cache {symbol}: {e}")
+            cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
+            cache_updates[cache_key] = symbol_rows
+    
+    # バッチキャッシュ保存（TASK-SPD-005: Redisパイプラインを使用）
+    if settings.ENABLE_CACHE and cache_updates:
+        try:
+            await cache.set_multi(cache_updates)
+            logger.debug(f"Batch cached {len(cache_updates)} symbol results")
+        except Exception as e:
+            logger.warning(f"Failed to batch cache updates: {e}")
     
     # キャッシュ済みと新規取得を結合
     if cached_results:

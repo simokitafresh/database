@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.services.symbol_validator import validate_symbol_exists
+from app.services.symbol_validator import validate_symbol_exists_async
 from app.services.normalize import normalize_symbol
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ async def auto_register_symbol(session: AsyncSession, symbol: str) -> bool:
         # Step 3: Validate symbol exists in Yahoo Finance
         logger.info(f"Validating new symbol {normalized_symbol} with Yahoo Finance")
         
-        if not validate_symbol_exists(normalized_symbol):
+        if not await validate_symbol_exists_async(normalized_symbol):
             error_msg = f"Symbol '{normalized_symbol}' does not exist in Yahoo Finance"
             logger.warning(error_msg)
             raise ValueError(error_msg)
@@ -178,9 +178,9 @@ async def batch_register_symbols(
     symbols: List[str]
 ) -> Dict[str, bool]:
     """
-    Register multiple symbols in batch.
+    Register multiple symbols in batch with parallel processing.
     
-    This function processes multiple symbols and returns the results
+    This function processes multiple symbols concurrently and returns the results
     for each one individually.
     
     Parameters
@@ -202,20 +202,26 @@ async def batch_register_symbols(
     This function does not raise exceptions for individual symbol failures.
     Check the return dictionary to see which symbols failed.
     """
-    results = {}
-    
-    for symbol in symbols:
+    async def register_one(symbol: str) -> tuple[str, bool]:
+        """Register a single symbol and return result."""
         try:
             result = await auto_register_symbol(session, symbol)
-            results[symbol] = result
+            return symbol, result
         except (ValueError, RuntimeError) as e:
             logger.error(f"Failed to register {symbol}: {e}")
-            results[symbol] = False
+            return symbol, False
     
-    success_count = sum(1 for success in results.values() if success)
+    # Process all symbols concurrently
+    tasks = [register_one(symbol) for symbol in symbols]
+    results = await asyncio.gather(*tasks)
+    
+    # Convert to dictionary
+    result_dict = dict(results)
+    
+    success_count = sum(1 for success in result_dict.values() if success)
     logger.info(f"Batch registration completed: {success_count}/{len(symbols)} successful")
     
-    return results
+    return result_dict
 
 
 __all__ = [

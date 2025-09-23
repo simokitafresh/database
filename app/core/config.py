@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,14 +23,19 @@ class Settings(BaseSettings):
     
     # API settings
     API_MAX_SYMBOLS: int = 10
-    # 大量取得許容のためデフォルト上限を拡大（Renderでは環境変数で上書き可能）
-    API_MAX_ROWS: int = 1000000
+    # Standard plan（1GB RAM）を考慮した上限値
+    API_MAX_ROWS: int = 50000
     YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
     YF_REQ_CONCURRENCY: int = 8  # 2から変更
+    # Rate limiting settings for Yahoo Finance API
+    YF_RATE_LIMIT_REQUESTS_PER_SECOND: float = 2.0  # Token bucket rate
+    YF_RATE_LIMIT_BURST_SIZE: int = 10  # Token bucket capacity
+    YF_RATE_LIMIT_BACKOFF_MULTIPLIER: float = 2.0  # Exponential backoff multiplier
+    YF_RATE_LIMIT_BACKOFF_BASE_DELAY: float = 1.0  # Base delay for backoff
+    YF_RATE_LIMIT_MAX_BACKOFF_DELAY: float = 60.0  # Maximum backoff delay
     FETCH_TIMEOUT_SECONDS: int = 30  # 8から30に変更
     FETCH_MAX_RETRIES: int = 3
     FETCH_BACKOFF_MAX_SECONDS: float = 8.0
-    REQUEST_TIMEOUT_SECONDS: int = 45  # 15から45に変更
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
     
@@ -56,6 +63,14 @@ class Settings(BaseSettings):
     ENABLE_CACHE: bool = True
     PREFETCH_SYMBOLS: str = "TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD"
     PREFETCH_INTERVAL_MINUTES: int = 5
+
+    # Redis settings (Standard planで利用可能)
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_LOCK_TIMEOUT: int = 30
+    REDIS_LOCK_BLOCKING_TIMEOUT: float = 10.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -1,16 +1,29 @@
 from __future__ import annotations
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from app.services.redis_utils import distributed_lock
 
 
-async def advisory_lock(conn: AsyncConnection, symbol: str) -> None:
-    """Acquire an advisory lock for the given symbol within a transaction.
+@asynccontextmanager
+async def advisory_lock(symbol: str) -> AsyncGenerator[None, None]:
+    """Acquire a distributed lock for the given symbol using Redis.
 
-    Uses PostgreSQL's pg_advisory_xact_lock with hashtext(symbol) to ensure
-    that only one transaction can operate on a specific symbol at a time.
+    This replaces PostgreSQL advisory locks with Redis-based distributed locking
+    for better concurrency across multiple application instances.
+
+    Parameters
+    ----------
+    symbol : str
+        Stock symbol to lock
+
+    Yields
+    ------
+    None
+        Lock is held during the context
     """
-    await conn.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:symbol))"),
-        {"symbol": symbol},
-    )
+    lock_key = f"symbol_lock:{symbol.lower()}"
+
+    async with distributed_lock(lock_key, timeout=30, blocking_timeout=10.0):
+        yield

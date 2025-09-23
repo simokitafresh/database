@@ -8,6 +8,7 @@ Yahoo Finance 由来の調整済み株価（OHLCV）をPostgreSQLへ保存し、
 - **カバレッジ管理**: `/v1/coverage`, `/v1/coverage/export` - データカバレッジ監視・CSV出力
 - **ジョブ管理**: `/v1/fetch` - 非同期データ取得・バックグラウンド処理
 - **パフォーマンス**: QueryOptimizer による 50-70% クエリ高速化
+- **分散処理**: Redis による分散ロック・キャッシュ（Standardプラン以上）
 - **実装完成度**: **100%** (全32タスク完了 - 2025年9月5日)
 - **仕様・DDL**: `architecture.md`
 - **マイグレーション**: Alembic（起動時に `alembic upgrade head` 実行）
@@ -184,9 +185,16 @@ services:
 # 必須設定（Renderダッシュボードで設定）
 DATABASE_URL=postgresql+asyncpg://[Supabase接続文字列]  # sync: false に設定
 API_MAX_SYMBOLS=50
-API_MAX_ROWS=1000000
+API_MAX_ROWS=50000
 YF_REFETCH_DAYS=30
 YF_REQ_CONCURRENCY=4
+
+# Redis設定（Standardプラン以上で利用可能）
+REDIS_HOST=your-redis-host.onrender.com
+REDIS_PORT=6379
+REDIS_PASSWORD=your-redis-password
+REDIS_DB=0
+REDIS_SSL=True
 
 # セキュリティ設定（本番用）
 CORS_ALLOW_ORIGINS=https://your-frontend-domain.com
@@ -216,6 +224,28 @@ curl "https://your-app.onrender.com/v1/coverage?limit=5"
 - **DB接続エラー**: DATABASE_URLとSupabase設定を確認
 - **CORS エラー**: CORS_ALLOW_ORIGINS の設定を確認
 - **タイムアウト**: GUNICORN_TIMEOUT の調整を検討
+- **Redis接続エラー**: REDIS_HOST/PORT/PASSWORD の設定を確認（Standardプラン以上が必要）
+- **Redis利用不可**: StarterプランではRedisが使えません。Standardプラン以上にアップグレードしてください
+
+### 📊 **Renderプラン別スペック（2025年9月現在）**
+
+#### Web Services メモリ容量
+| プラン | 月額料金 | RAM | CPU |
+|--------|----------|-----|-----|
+| **Free** | $0 | 512MB | 0.1 |
+| **Starter** | $7 | **512MB** | 0.5 |
+| **Standard** | $25 | **2GB** | 1 |
+| **Pro** | $85 | 4GB | 2 |
+| **Pro Plus** | $175 | 8GB | 4 |
+
+#### Key Value (Redis) メモリ容量  
+| プラン | 月額料金 | RAM | 接続数 | 永続化 |
+|--------|----------|-----|--------|--------|
+| **Free** | $0 | 25MB | 50 | ❌ |
+| **Starter** | $10 | 256MB | 250 | ✅ |
+| **Standard** | $32 | 1GB | 1,000 | ✅ |
+| **Pro** | $135 | 5GB | 5,000 | ✅ |
+| **Pro Plus** | $250 | 10GB | 10,000 | ✅ |
 
 ## API使用例
 
@@ -441,7 +471,7 @@ ALEMBIC_DATABASE_URL=postgresql+psycopg://user:password@host:5432/database  # �
 
 # API制限設定  
 API_MAX_SYMBOLS=50        # 1リクエストの最大シンボル数
-API_MAX_ROWS=1000000      # レスポンス最大行数
+API_MAX_ROWS=50000      # レスポンス最大行数
 ```
 
 ### パフォーマンス調整
@@ -529,6 +559,7 @@ FastAPI 0.104+         # 高性能 Web フレームワーク
 SQLAlchemy 2.0+        # 非同期 ORM
 AsyncPG               # PostgreSQL 非同期ドライバー
 Alembic               # データベースマイグレーション
+Redis 5.0.1           # 分散ロック・キャッシュ（Standardプラン以上）
 
 # データソース  
 yfinance              # Yahoo Finance API ラッパー

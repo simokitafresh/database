@@ -17,13 +17,20 @@ from app.core.config import settings
 from app.db.utils import advisory_lock
 from app.services.fetcher import fetch_prices
 from app.services.upsert import df_to_rows, upsert_prices_sql
+from app.db.queries_optimized import get_coverage_optimized
 
 
 # Preserve legacy alias for tests and backward compatibility
 async def with_symbol_lock(session: AsyncSession, symbol: str) -> None:
-    """Acquire an advisory lock for the given symbol within a transaction."""
-    conn = await session.connection()
-    await advisory_lock(conn, symbol)
+    """Acquire a distributed lock for the given symbol using Redis.
+
+    This replaces PostgreSQL advisory locks with Redis-based distributed locking
+    for better concurrency across multiple application instances.
+    """
+    from app.services.redis_utils import symbol_lock
+
+    async with symbol_lock(symbol):
+        pass
 
 
 async def _ensure_full_history_once(session: AsyncSession, symbol: str) -> None:
@@ -113,62 +120,10 @@ async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, dat
     function reports the first missing weekday if any. Exchange-specific
     holidays are not considered; a dedicated holiday table could be joined in
     the future to refine gap detection.
+
+    Uses optimized query from queries_optimized.py for better performance.
     """
-
-    sql = text(
-        """
-        WITH rng AS (
-            SELECT CAST(:date_from AS date) AS dfrom, CAST(:date_to AS date) AS dto
-        ),
-        cov AS (
-            SELECT MIN(date) AS first_date,
-                   MAX(date) AS last_date,
-                   COUNT(*)  AS cnt
-            FROM prices
-            WHERE symbol = :symbol
-              AND date BETWEEN (SELECT dfrom FROM rng) AND (SELECT dto FROM rng)
-        ),
-        gaps AS (
-            SELECT p.date AS cur_date,
-                   LEAD(p.date) OVER (ORDER BY p.date) AS next_date
-            FROM prices p
-            WHERE p.symbol = :symbol
-              AND p.date BETWEEN (SELECT dfrom FROM rng) AND (SELECT dto FROM rng)
-        ),
-        weekdays_between AS (
-            SELECT g.cur_date, g.next_date, (gs.d)::date AS d
-            FROM (
-                SELECT * FROM gaps WHERE next_date IS NOT NULL
-            ) AS g
-            JOIN LATERAL generate_series(
-                g.cur_date + INTERVAL '1 day',
-                g.next_date - INTERVAL '1 day',
-                INTERVAL '1 day'
-            ) AS gs(d) ON TRUE
-            WHERE EXTRACT(ISODOW FROM gs.d) BETWEEN 1 AND 5
-        ),
-        weekday_gaps AS (
-            SELECT cur_date, next_date, MIN(d)::date AS first_weekday_missing
-            FROM weekdays_between
-            GROUP BY cur_date, next_date
-        )
-        SELECT
-            (SELECT first_date FROM cov) AS first_date,
-            (SELECT last_date  FROM cov) AS last_date,
-            (SELECT cnt        FROM cov) AS cnt,
-            EXISTS (SELECT 1 FROM weekday_gaps) AS has_weekday_gaps,
-            (SELECT MIN(first_weekday_missing) FROM weekday_gaps) AS first_missing_weekday
-        """
-    )
-
-    res = await session.execute(sql, {"symbol": symbol, "date_from": date_from, "date_to": date_to})
-    mappings = res.mappings()
-    first = getattr(mappings, "first", None)
-    row_obj = first() if callable(first) else None
-    if inspect.isawaitable(row_obj):
-        row_obj = await row_obj
-    row = cast(Mapping[str, Any], row_obj or {})
-    return dict(row)
+    return await get_coverage_optimized(session, symbol, date_from, date_to)
 
 
 async def _symbol_has_any_prices(session: AsyncSession, symbol: str) -> bool:

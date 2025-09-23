@@ -8,6 +8,7 @@ from urllib.error import HTTPError as URLlibHTTPError
 
 import yfinance as yf
 from requests.exceptions import HTTPError as RequestsHTTPError, Timeout, ConnectionError
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 
@@ -66,6 +67,28 @@ def validate_symbol_exists(symbol: str, timeout: Optional[int] = None) -> bool:
             logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
             return False
         elif hasattr(e, 'response') and e.response.status_code == 404:
+            logger.info(f"Symbol {symbol}: Empty or invalid info response")
+            return False
+            
+        # Yahoo Finance sometimes returns empty dict for invalid symbols
+        if len(info) < 5:  # Valid symbols typically have many fields
+            logger.warning(f"Symbol {symbol}: Insufficient info data (possibly invalid)")
+            return False
+            
+        # Check for symbol field as additional validation
+        symbol_from_info = info.get('symbol')
+        if symbol_from_info and symbol_from_info.upper() != symbol.upper():
+            logger.warning(f"Symbol mismatch: requested {symbol}, got {symbol_from_info}")
+            return False
+            
+        logger.info(f"Symbol {symbol} validated successfully")
+        return True
+        
+    except (URLlibHTTPError, RequestsHTTPError) as e:
+        if hasattr(e, 'code') and e.code == 404:
+            logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
+            return False
+        elif hasattr(e, 'response') and e.response.status_code == 404:
             logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
             return False
         else:
@@ -80,6 +103,25 @@ def validate_symbol_exists(symbol: str, timeout: Optional[int] = None) -> bool:
     except Exception as e:
         logger.error(f"Unexpected error validating {symbol}: {e}", exc_info=True)
         return False
+
+
+async def validate_symbol_exists_async(symbol: str, timeout: Optional[int] = None) -> bool:
+    """
+    Async version of validate_symbol_exists.
+    
+    Parameters
+    ----------
+    symbol : str
+        Ticker symbol to validate
+    timeout : int, optional
+        Timeout in seconds (default: YF_VALIDATE_TIMEOUT from settings)
+        
+    Returns
+    -------
+    bool
+        True if symbol exists, False otherwise
+    """
+    return await run_in_threadpool(validate_symbol_exists, symbol, timeout)
 
 
 def get_symbol_info(symbol: str, timeout: Optional[int] = None) -> Dict[str, Any]:
@@ -152,4 +194,4 @@ def get_symbol_info(symbol: str, timeout: Optional[int] = None) -> Dict[str, Any
     return result
 
 
-__all__ = ["validate_symbol_exists", "get_symbol_info"]
+__all__ = ["validate_symbol_exists", "validate_symbol_exists_async", "get_symbol_info"]

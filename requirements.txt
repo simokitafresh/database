@@ -36,4 +36,4 @@ pytest-mock==3.12.0
 
 # Development & Testing Database
 aiosqlite==0.21.0
-trio==0.30.0
+trio==0.31.0

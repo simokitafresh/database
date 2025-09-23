@@ -77,6 +77,10 @@ docker/.env
 node_modules/
 npm-debug.log*
 
+# Profiling
+*.prof
+profile_output.prof
+
 # Miscellaneous
 *.bak
 *.backup

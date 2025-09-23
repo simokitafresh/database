@@ -10,7 +10,7 @@ psycopg[binary]==3.2.9
 alembic==1.13.1
 
 # Pydantic & Settings
-pydantic-settings==2.0.3
+pydantic-settings==2.10.1
 
 # Data Processing & Finance
 pandas==2.2.3

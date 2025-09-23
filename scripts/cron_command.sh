@@ -28,44 +28,89 @@ if [[ "$RENDER_EXTERNAL_URL" == https://https://* ]]; then
     log "Fixed duplicate https:// in URL"
 fi
 
-# Debug: Show the URL being used (without token for security)
-log "Using URL: ${RENDER_EXTERNAL_URL}/v1/daily-update"
-
-# Execute the cron job with retry logic
-log "Executing daily update endpoint..."
-
-# Ensure URL doesn't have trailing slash and construct full endpoint URL
+# Construct base URL
 BASE_URL="${RENDER_EXTERNAL_URL%/}"
-ENDPOINT_URL="${BASE_URL}/v1/daily-update"
 
-log "Full endpoint URL: ${ENDPOINT_URL}"
+log "Using base URL: ${BASE_URL}"
 
-curl -X POST "${ENDPOINT_URL}" \
+# Step 1: Get active symbols
+log "Fetching active symbols..."
+SYMBOLS_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  "${BASE_URL}/v1/symbols?active=true" \
   -H "X-Cron-Secret: ${CRON_SECRET_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"dry_run": false}' \
-  --max-time 3600 \
-  --retry 2 \
-  --retry-delay 30 \
-  --fail \
-  --show-error \
-  --silent \
-  --output /tmp/cron_response.json
+  --max-time 30)
 
-# Check if response file exists and show results
-if [ -f /tmp/cron_response.json ]; then
-    log "Cron job completed successfully"
-    log "Response: $(cat /tmp/cron_response.json)"
-    
-    # Extract status from response
-    status=$(cat /tmp/cron_response.json | python3 -c "import json, sys; data=json.load(sys.stdin); print(data.get('status', 'unknown'))")
-    log "Job status: $status"
-    
-    # Clean up
-    rm -f /tmp/cron_response.json
-else
-    log "ERROR: No response received from cron endpoint"
+# Extract HTTP status and body
+HTTP_STATUS=$(echo "$SYMBOLS_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+SYMBOLS_BODY=$(echo "$SYMBOLS_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$HTTP_STATUS" != "200" ]; then
+    log "ERROR: Failed to fetch symbols. HTTP Status: $HTTP_STATUS"
+    log "Response: $SYMBOLS_BODY"
     exit 1
 fi
 
-log "Daily stock data update completed"
+# Extract symbols array from JSON response
+SYMBOLS=$(echo "$SYMBOLS_BODY" | python3 -c "
+import json
+import sys
+try:
+    data = json.load(sys.stdin)
+    symbols = [item['symbol'] for item in data if item.get('is_active', False)]
+    print(','.join(symbols))
+except:
+    print('')
+")
+
+if [ -z "$SYMBOLS" ]; then
+    log "ERROR: No active symbols found"
+    exit 1
+fi
+
+log "Found active symbols: $SYMBOLS"
+
+# Step 2: Calculate date range (last 30 days)
+START_DATE=$(date -d '30 days ago' +%Y-%m-%d)
+END_DATE=$(date +%Y-%m-%d)
+
+log "Date range: $START_DATE to $END_DATE"
+
+# Step 3: Create fetch job
+log "Creating fetch job..."
+JOB_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  -X POST "${BASE_URL}/v1/fetch" \
+  -H "Content-Type: application/json" \
+  -d "{\"symbols\": [\"$(echo $SYMBOLS | sed 's/,/\",\"/g')\"], \"date_from\": \"$START_DATE\", \"date_to\": \"$END_DATE\"}" \
+  --max-time 60)
+
+# Extract HTTP status and body
+JOB_HTTP_STATUS=$(echo "$JOB_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+JOB_BODY=$(echo "$JOB_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$JOB_HTTP_STATUS" != "200" ]; then
+    log "ERROR: Failed to create fetch job. HTTP Status: $JOB_HTTP_STATUS"
+    log "Response: $JOB_BODY"
+    exit 1
+fi
+
+# Extract job ID from response
+JOB_ID=$(echo "$JOB_BODY" | python3 -c "
+import json
+import sys
+try:
+    data = json.load(sys.stdin)
+    print(data.get('id', ''))
+except:
+    print('')
+")
+
+if [ -z "$JOB_ID" ]; then
+    log "ERROR: Failed to extract job ID from response"
+    log "Response: $JOB_BODY"
+    exit 1
+fi
+
+log "Successfully created fetch job with ID: $JOB_ID"
+log "Job details: $JOB_BODY"
+
+log "Daily stock data update job initiated successfully"

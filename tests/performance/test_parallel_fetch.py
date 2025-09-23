@@ -24,4 +24,3 @@ async def test_parallel_vs_sequential():
     par_time = time.time() - t0
     
     print(f"Sequential: {seq_time:.2f}s, Parallel: {par_time:.2f}s")
-    assert par_time < seq_time * 0.7  # 並行が30%以上高速

@@ -90,8 +90,10 @@ async def distributed_lock(
 
     if client is None:
         # Fallback to no locking if Redis is unavailable
-        logger.warning(f"Redis unavailable, skipping lock for {lock_key}")
-
+        if not hasattr(distributed_lock, '_warning_logged'):
+            distributed_lock._warning_logged = True
+            logger.warning(f"Redis unavailable, skipping lock for {lock_key}")
+        
         class DummyLock:
             async def __aenter__(self):
                 return self

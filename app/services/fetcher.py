@@ -49,6 +49,23 @@ class RateLimiter:
             await asyncio.sleep(wait_time)
             self.tokens = 0
             self.last_update = time.time()
+    
+    def acquire_sync(self) -> None:
+        """Synchronous version of acquire for use in sync functions."""
+        # Simple token bucket implementation for sync context
+        now = time.time()
+        elapsed = now - self.last_update
+        self.tokens = min(self.burst_size, self.tokens + elapsed * self.rate_per_second)
+        self.last_update = now
+        
+        if self.tokens < 1:
+            # Simple delay calculation
+            wait_time = (1 - self.tokens) / self.rate_per_second
+            time.sleep(min(wait_time, 1.0))  # Cap at 1 second to avoid long delays
+            self.tokens = 0
+            self.last_update = time.time()
+        else:
+            self.tokens -= 1
 
 
 class ExponentialBackoff:
@@ -156,11 +173,8 @@ def fetch_prices(
 
         while attempts <= max_attempts:
             try:
-                # Acquire rate limit token (async call but we wait)
-                if asyncio.iscoroutinefunction(rate_limiter.acquire):
-                    asyncio.create_task(rate_limiter.acquire())
-                else:
-                    rate_limiter.acquire()
+                # Acquire rate limit token (use sync version for sync function)
+                rate_limiter.acquire_sync()
                 
                 with io.StringIO() as _out, io.StringIO() as _err, redirect_stdout(_out), redirect_stderr(_err):
                     df = yf.download(

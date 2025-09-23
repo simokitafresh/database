@@ -28,8 +28,10 @@ async def lifespan(_: FastAPI):
         # 起動時の処理
         logger.info("Starting application...")
         
-        # プリフェッチサービス開始（ENABLE_CACHEがTrueの場合のみ）
-        if settings.ENABLE_CACHE:
+        # プリフェッチサービス開始（ENABLE_CACHEがTrueで、Supabase環境でない場合のみ）
+        # SupabaseのNullPool環境では並行処理が許可されていないため無効化
+        is_supabase = "supabase.com" in settings.DATABASE_URL
+        if settings.ENABLE_CACHE and not is_supabase:
             try:
                 from app.services.prefetch_service import get_prefetch_service
                 prefetch_service = get_prefetch_service()
@@ -40,6 +42,10 @@ async def lifespan(_: FastAPI):
             except Exception as e:
                 logger.error(f"Failed to start prefetch service: {e}")
                 # エラーが起きてもアプリは起動させる
+        elif is_supabase:
+            logger.info("Prefetch service disabled for Supabase environment (NullPool)")
+        else:
+            logger.info("Prefetch service disabled (ENABLE_CACHE=False)")
         
         yield
         

@@ -126,7 +126,8 @@ async def distributed_lock(
             logger.warning(f"Error releasing lock {lock_key}: {e}")
 
 
-async def symbol_lock(symbol: str) -> RedisLock:
+@asynccontextmanager
+async def symbol_lock(symbol: str):
     """Get a distributed lock for a specific symbol.
 
     This replaces the PostgreSQL advisory lock with Redis-based distributed locking,
@@ -137,8 +138,8 @@ async def symbol_lock(symbol: str) -> RedisLock:
     symbol : str
         Stock symbol to lock
 
-    Returns
-    -------
+    Yields
+    ------
     RedisLock
         Distributed lock for the symbol
     """

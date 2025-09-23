@@ -81,6 +81,23 @@ npm-debug.log*
 *.prof
 profile_output.prof
 
+# CI/CD
+.github/workflows/*.log
+.github/ISSUE_TEMPLATE/
+.github/PULL_REQUEST_TEMPLATE/
+
+# Pre-commit
+.pre-commit-config.yaml.backup
+
+# Security reports
+bandit-report.json
+audit-report.json
+benchmark.json
+
+# Test results
+test-results.xml
+coverage.xml
+
 # Miscellaneous
 *.bak
 *.backup

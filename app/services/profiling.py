@@ -26,6 +26,10 @@ class PerformanceProfiler:
     @contextmanager
     def profile_context(self, name: str):
         """Context manager for profiling code blocks."""
+        if not settings.ENABLE_PROFILING:
+            yield
+            return
+            
         pr = cProfile.Profile()
         pr.enable()
         start_time = time.time()

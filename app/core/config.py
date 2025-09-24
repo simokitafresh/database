@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     REDIS_LOCK_TIMEOUT: int = 30
     REDIS_LOCK_BLOCKING_TIMEOUT: float = 10.0
 
+    # Profiling settings
+    ENABLE_PROFILING: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

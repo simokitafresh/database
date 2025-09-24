@@ -15,6 +15,8 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+from app.core.config import settings
+
 
 class PerformanceProfiler:
     """Performance profiling utility for identifying bottlenecks."""

@@ -40,9 +40,22 @@ def verify_cron_token(x_cron_secret: Optional[str] = Header(None)) -> bool:
         )
 
     if x_cron_secret != settings.CRON_SECRET_TOKEN:
+        # Debug info
+        received_len = len(x_cron_secret) if x_cron_secret else 0
+        expected_len = len(settings.CRON_SECRET_TOKEN)
+        received_start = x_cron_secret[:3] if x_cron_secret else "None"
+        expected_start = settings.CRON_SECRET_TOKEN[:3]
+        
+        logger.warning(f"Token mismatch. Received: {received_start}...({received_len}), Expected: {expected_start}...({expected_len})")
+        
         raise HTTPException(
             status_code=403,
-            detail={"error": {"code": "INVALID_TOKEN", "message": "Invalid cron token"}},
+            detail={
+                "error": {
+                    "code": "INVALID_TOKEN", 
+                    "message": f"Invalid cron token. Received len: {received_len}, Expected len: {expected_len}. Received start: {received_start}, Expected start: {expected_start}"
+                }
+            },
         )
 
     return True

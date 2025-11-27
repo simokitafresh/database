@@ -96,16 +96,30 @@ class FredService:
         if not data:
             return
 
-        stmt = insert(EconomicIndicator).values(data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["symbol", "date"],
-            set_={"value": stmt.excluded.value, "last_updated": datetime.now()}
-        )
-
+        # Process in batches to avoid PostgreSQL parameter limit (max 32767 params)
+        # Each row has 3 params, so max rows approx 10000. Using 1000 for safety.
+        batch_size = 1000
+        total_batches = (len(data) + batch_size - 1) // batch_size
+        
         try:
-            await db.execute(stmt)
+            for i in range(0, len(data), batch_size):
+                batch = data[i:i + batch_size]
+                
+                stmt = insert(EconomicIndicator).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["symbol", "date"],
+                    set_={"value": stmt.excluded.value, "last_updated": datetime.now()}
+                )
+                
+                await db.execute(stmt)
+                # Commit after each batch or at the end? 
+                # Committing at the end is atomic, but might be large transaction.
+                # Committing per batch is safer for memory but less atomic.
+                # Given the error was about query size, single transaction is fine if queries are split.
+            
             await db.commit()
-            logger.info(f"Saved {len(data)} economic indicators to database.")
+            logger.info(f"Saved {len(data)} economic indicators to database in {total_batches} batches.")
+            
         except Exception as e:
             await db.rollback()
             logger.error(f"Error saving economic data: {e}")

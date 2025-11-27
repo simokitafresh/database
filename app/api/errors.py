@@ -160,3 +160,13 @@ def init_error_handlers(app: FastAPI) -> None:
         return _http_exception_handler(request, exc)
 
     app.add_exception_handler(404, _not_found)
+    
+    async def _global_exception_handler(request: Request, exc: Exception):
+        import traceback
+        error_msg = f"{str(exc)}\n{traceback.format_exc()}"
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": error_msg}}
+        )
+
+    app.add_exception_handler(Exception, _global_exception_handler)

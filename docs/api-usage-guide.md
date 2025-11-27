@@ -26,7 +26,7 @@ This guide distills the FastAPI surface of the stock data management system so a
 
 ## Authentication
 - General API consumers do not need authentication.
-- Cron maintenance endpoints require the header `X-Cron-Secret: <token>`. The expected token is configured in `settings.CRON_SECRET_TOKEN`.
+- Cron maintenance endpoints (`/v1/daily-update`, `/v1/daily-economic-update`, `/v1/status`) require the header `X-Cron-Secret: <token>`. The expected token is configured in `settings.CRON_SECRET_TOKEN`.
 
 ## Pagination Patterns
 - `GET /v1/coverage` exposes `page` and `page_size` with a `pagination` object in the response.
@@ -38,8 +38,8 @@ This guide distills the FastAPI surface of the stock data management system so a
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/` | Root ping (`{"status": "ok", "service": "Stock OHLCV API"}`) |
-| GET | `/healthz` | Process and database heartbeat |
-| GET | `/v1/health` | Version scoped heartbeat with service label |
+| GET | `/healthz` | Simple health check (`{"status": "ok"}`) |
+| GET | `/v1/health` | Version scoped heartbeat (`{"status": "ok", "service": "Stock OHLCV API", "scope": "v1"}`) |
 
 ### Symbol Directory
 #### GET `/v1/symbols`
@@ -130,9 +130,6 @@ Sample response:
 }
 ```
 
-#### GET `/v1/prices/count/{symbol}`
-Debug helper returning the number of stored rows and min/max dates for a symbol.
-
 ### Coverage Analytics
 #### GET `/v1/coverage`
 Paginated coverage dashboard backed by the `coverage_summary` view.
@@ -192,7 +189,7 @@ Fetch jobs orchestrate bulk historical loads through the background worker (`app
 Creates a job and schedules it for asynchronous execution.
 
 Request body:
-- `symbols` (list[str], 1-100, validated against `[A-Z0-9.-]{1,20}`)
+- `symbols` (list[str], 1-100, validated against `[\^A-Z0-9.-]{1,20}`)
 - `date_from` (date, not more than 20 years back)
 - `date_to` (date, same or after `date_from`, not in the future, max 10-year span)
 - `interval` (`1d`, `1wk`, `1mo`, `3mo`, default `1d`)
@@ -242,7 +239,7 @@ Example fragment:
 Lists jobs, newest first.
 
 Query parameters:
-- `status` (optional filter; one of `pending`, `processing`, `completed`, `completed_with_errors`, `failed`, `cancelled`)
+- `status` (optional filter; one of `pending`, `processing`, `completed`, `completed_errors`, `failed`, `cancelled`)
 - `date_from` (optional ISO 8601 timestamp; returns jobs created after it)
 - `limit` (1-100, default 20)
 - `offset` (>= 0, default 0)
@@ -283,17 +280,196 @@ Success response fields include:
 #### GET `/v1/status`
 Also gated by `X-Cron-Secret`. Summarises recent cron activity and current configuration (active symbol count, batch size, YF concurrency).
 
+Sample response:
+```json
+{
+  "status": "active",
+  "last_run": null,
+  "recent_job_count": 0,
+  "job_status_counts": {},
+  "settings": {
+    "batch_size": 50,
+    "update_days": 7,
+    "yf_concurrency": 5,
+    "active_symbols": 150
+  }
+}
+```
+
+#### POST `/v1/daily-economic-update`
+Triggers an update for economic indicator data (FRED DTB3 3-Month Treasury Bill Rate).
+
+Headers:
+- `X-Cron-Secret`: required.
+
+Request body:
+- `dry_run` (bool, default `false`): when true, returns the plan without executing fetches.
+- `date_from` / `date_to` (optional `YYYY-MM-DD` strings): override the default date range.
+
+The endpoint automatically detects whether full history or incremental updates are needed.
+
+Success response fields include:
+- `status`: `success`
+- `message`: human summary
+- `total_symbols`: always 1 (DTB3)
+- `batch_count`: 1
+- `date_range`: processed window
+- `success_count`: number of data points updated
+
+### Debug and Performance Endpoints
+
+#### GET `/v1/prices/count/{symbol}`
+Debug helper returning the count of stored price rows and the min/max date range for a symbol.
+
+Sample response:
+```json
+{
+  "symbol": "AAPL",
+  "count": 11023,
+  "date_range": {
+    "min": "1980-12-12",
+    "max": "2024-09-11"
+  }
+}
+```
+
+#### GET `/v1/performance/report`
+Returns performance profiling report for debugging bottlenecks.
+
+Sample response:
+```json
+{
+  "performance_report": {
+    "get_prices_api": {
+      "count": 150,
+      "avg_ms": 45.3,
+      "max_ms": 230.5
+    }
+  },
+  "timestamp": "2024-09-11T03:20:00Z"
+}
+```
+
+#### GET `/v1/debug/cache-stats`
+Returns cache statistics (development/staging environments only).
+
+Sample response:
+```json
+{
+  "total_items": 25,
+  "max_size": 1000,
+  "ttl_seconds": 300,
+  "sample_items": [
+    {
+      "key": "prices:AAPL:2024-01-01:2024-09-11",
+      "age_seconds": 120.5,
+      "size_bytes": 45230
+    }
+  ]
+}
+```
+
+### Economic Indicators (FRED Data)
+
+#### GET `/v1/economic`
+List all available economic data series with metadata.
+
+Sample response:
+```json
+[
+  {
+    "symbol": "DTB3",
+    "name": "3-Month Treasury Bill Secondary Market Rate",
+    "description": "The 3-Month Treasury Bill rate is the yield received for investing in a US government issued treasury bill with a 3-month maturity.",
+    "frequency": "Daily",
+    "units": "Percent",
+    "source": "FRED (Federal Reserve Economic Data)",
+    "data_start": "1954-01-04",
+    "data_end": "2024-11-25",
+    "row_count": 17845,
+    "last_updated": "2024-11-26T03:00:00Z"
+  }
+]
+```
+
+#### GET `/v1/economic/{symbol}`
+Get historical economic indicator data for a specific series.
+
+Query parameters:
+| Name | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `from` | date | no | Start date (YYYY-MM-DD) |
+| `to` | date | no | End date (YYYY-MM-DD) |
+| `limit` | int | no (default 1000) | Max records (1-10000) |
+| `order` | string | no (default `asc`) | `asc` or `desc` |
+
+Sample request:
+```
+curl "http://localhost:8000/v1/economic/DTB3?from=2024-01-01&to=2024-12-31"
+```
+
+Sample response:
+```json
+{
+  "symbol": "DTB3",
+  "data": [
+    {
+      "symbol": "DTB3",
+      "date": "2024-01-02",
+      "value": 5.22,
+      "last_updated": "2024-01-03T03:00:00Z"
+    },
+    {
+      "symbol": "DTB3",
+      "date": "2024-01-03",
+      "value": 5.24,
+      "last_updated": "2024-01-04T03:00:00Z"
+    }
+  ],
+  "count": 2,
+  "date_range": {
+    "from": "2024-01-02",
+    "to": "2024-01-03"
+  }
+}
+```
+
+#### GET `/v1/economic/{symbol}/latest`
+Get the most recent data point for an economic series.
+
+Sample request:
+```
+curl "http://localhost:8000/v1/economic/DTB3/latest"
+```
+
+Sample response:
+```json
+{
+  "symbol": "DTB3",
+  "date": "2024-11-25",
+  "value": 4.42,
+  "last_updated": "2024-11-26T03:00:00Z"
+}
+```
+
 ## Common Workflows
 1. **Serve end-user charts**: call `GET /v1/prices` with `auto_fetch=true`. Cache results and monitor coverage via `GET /v1/coverage` for anomalies.
 2. **Backfill history**: create a fetch job with `POST /v1/fetch`, poll `/v1/fetch/{job_id}`, and reconcile results. Retry failed symbols via a follow-up job or manual `GET /v1/prices`.
 3. **Daily operations**: run `/v1/daily-update` from a scheduler using the cron secret, then inspect `/v1/status` to confirm success.
+4. **Economic data updates**: run `/v1/daily-economic-update` for FRED Treasury Bill rate data updates.
+5. **Debug and monitor**: use `/v1/prices/count/{symbol}` to check data persistence, `/v1/performance/report` for profiling, and `/v1/debug/cache-stats` for cache inspection (dev/staging only).
 
 ## Helpful Source Files
-- `app/api/v1/prices.py`
-- `app/api/v1/coverage.py`
-- `app/api/v1/fetch.py`
-- `app/api/v1/cron.py`
-- `app/api/v1/symbols.py`
+- `app/api/v1/prices.py` - Price data retrieval and deletion
+- `app/api/v1/coverage.py` - Coverage analytics and export
+- `app/api/v1/fetch.py` - Fetch job management
+- `app/api/v1/cron.py` - Scheduled maintenance endpoints
+- `app/api/v1/symbols.py` - Symbol directory
+- `app/api/v1/health.py` - Health check endpoints
+- `app/api/v1/debug.py` - Debug endpoints (cache stats)
+- `app/api/v1/economic.py` - Economic indicators API (DTB3)
+- `app/services/fred_service.py` - FRED API integration
+- `app/schemas/economic.py` - Economic data schemas
 - Schemas in `app/schemas/`
 
 Keep this guide alongside the canonical specs (`architecture.md`, `README.md`, `docs/implementation-task-list.md`) so automated agents remain aligned with production behavior.

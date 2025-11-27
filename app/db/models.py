@@ -101,3 +101,19 @@ class FetchJob(Base):
     started_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     completed_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     created_by = sa.Column(sa.String(100), nullable=True)
+
+
+class EconomicIndicator(Base):
+    """Economic indicators data (e.g. FRED data)."""
+
+    __tablename__ = "economic_indicators"
+    __table_args__ = (
+        sa.PrimaryKeyConstraint("symbol", "date"),
+    )
+
+    symbol = sa.Column(sa.String, nullable=False)
+    date = sa.Column(sa.Date, nullable=False)
+    value = sa.Column(sa.Float, nullable=True)
+    last_updated = sa.Column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )

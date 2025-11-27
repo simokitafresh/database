@@ -318,3 +318,103 @@ async def get_cron_status(
     except Exception as e:
         logger.error(f"Failed to get cron status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get cron status: {str(e)}")
+
+
+@router.post("/daily-economic-update", response_model=CronDailyUpdateResponse)
+async def daily_economic_update(
+    request: CronDailyUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    authenticated: bool = Depends(verify_cron_token),
+) -> CronDailyUpdateResponse:
+    """Execute daily economic data update (FRED)."""
+    start_time = datetime.utcnow()
+    logger.info(f"Starting daily economic data update (dry_run={request.dry_run})")
+
+    try:
+        # Calculate date range
+        if request.date_from:
+            try:
+                date_from = datetime.strptime(request.date_from, "%Y-%m-%d").date()
+            except ValueError:
+                date_from = date.today() - timedelta(days=settings.CRON_UPDATE_DAYS)
+        else:
+            date_from = date.today() - timedelta(days=settings.CRON_UPDATE_DAYS)
+
+        if request.date_to:
+            try:
+                date_to = datetime.strptime(request.date_to, "%Y-%m-%d").date()
+            except ValueError:
+                date_to = date.today()
+        else:
+            date_to = date.today()
+
+        logger.info(f"Date range for economic update: {date_from} to {date_to}")
+
+        if request.dry_run:
+            return CronDailyUpdateResponse(
+                status="success",
+                message="Dry run completed for economic update",
+                total_symbols=1,  # Currently only DTB3
+                batch_count=1,
+                date_range={"from": str(date_from), "to": str(date_to)},
+                timestamp=start_time.isoformat(),
+                success_count=None
+            )
+
+        # Fetch and save data
+        from app.services.fred_service import get_fred_service
+        
+        fred_service = get_fred_service()
+        data = fred_service.fetch_dtb3_data(start_date=date_from, end_date=date_to)
+        
+        if data:
+            # Run sync database operation in threadpool if needed, but here we can just use the session
+            # However, FredService.save_economic_data uses a sync session, but we have an AsyncSession here.
+            # We need to adapt or use run_in_threadpool with a sync session, OR update FredService to support AsyncSession.
+            # For simplicity and consistency with existing code, let's update FredService to accept AsyncSession or handle it here.
+            # Actually, the existing code uses `session: AsyncSession`. 
+            # `FredService.save_economic_data` takes `db: Session` (sync).
+            # We should probably update `FredService` to be async or use `run_sync`.
+            
+            # Let's use run_sync for now to reuse the sync logic if possible, 
+            # BUT `AsyncSession` does not have `execute` in the same way for sync queries directly without `run_sync`.
+            # Actually, `AsyncSession` is compatible with `execute(stmt)`.
+            # Let's rewrite the save logic inline or update the service. 
+            # Updating the service to be async-friendly is better.
+            
+            # Wait, `FredService.save_economic_data` uses `db.execute(stmt)`. 
+            # If `db` is `AsyncSession`, `await db.execute(stmt)` is required.
+            
+            # Let's update `FredService` to be async-aware or just handle the saving here for now to avoid breaking changes if it was used elsewhere (it's new, so we can change it).
+            # I will change `save_economic_data` to be async in the next step.
+            # For now, I will assume I will update it.
+            
+            await fred_service.save_economic_data_async(session, data)
+            
+            success_count = len(data)
+            message = f"Successfully updated {success_count} data points for DTB3"
+        else:
+            success_count = 0
+            message = "No data found to update"
+
+        return CronDailyUpdateResponse(
+            status="success",
+            message=message,
+            total_symbols=1,
+            batch_count=1,
+            date_range={"from": str(date_from), "to": str(date_to)},
+            timestamp=start_time.isoformat(),
+            success_count=success_count
+        )
+
+    except Exception as e:
+        logger.exception("Unexpected error in daily_economic_update")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": f"Internal server error: {str(e)}",
+                }
+            },
+        )

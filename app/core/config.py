@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     CRON_SECRET_TOKEN: str = ""
     CRON_BATCH_SIZE: int = 50
     CRON_UPDATE_DAYS: int = 7
+
+    # FRED API Settings
+    FRED_API_KEY: Optional[str] = None
     
     # Auto-registration settings
     ENABLE_AUTO_REGISTRATION: bool = True

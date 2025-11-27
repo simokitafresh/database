@@ -40,22 +40,9 @@ def verify_cron_token(x_cron_secret: Optional[str] = Header(None)) -> bool:
         )
 
     if x_cron_secret != settings.CRON_SECRET_TOKEN:
-        # Debug info
-        received_len = len(x_cron_secret) if x_cron_secret else 0
-        expected_len = len(settings.CRON_SECRET_TOKEN)
-        received_start = x_cron_secret[:3] if x_cron_secret else "None"
-        expected_start = settings.CRON_SECRET_TOKEN[:3]
-        
-        logger.warning(f"Token mismatch. Received: {received_start}...({received_len}), Expected: {expected_start}...({expected_len})")
-        
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": {
-                    "code": "INVALID_TOKEN", 
-                    "message": f"Invalid cron token. Received len: {received_len}, Expected len: {expected_len}. Received start: {received_start}, Expected start: {expected_start}"
-                }
-            },
+            detail={"error": {"code": "INVALID_TOKEN", "message": "Invalid cron token"}},
         )
 
     return True
@@ -345,13 +332,15 @@ async def daily_economic_update(
 
     try:
         # Calculate date range
+        # Calculate date range
         if request.date_from:
             try:
                 date_from = datetime.strptime(request.date_from, "%Y-%m-%d").date()
             except ValueError:
-                date_from = date.today() - timedelta(days=settings.CRON_UPDATE_DAYS)
+                # Fallback logic if parsing fails
+                date_from = None
         else:
-            date_from = date.today() - timedelta(days=settings.CRON_UPDATE_DAYS)
+            date_from = None
 
         if request.date_to:
             try:
@@ -360,6 +349,38 @@ async def daily_economic_update(
                 date_to = date.today()
         else:
             date_to = date.today()
+
+        # If date_from is not explicitly provided, determine it from DB
+        if date_from is None:
+            from sqlalchemy import func, select
+            from app.db.models import EconomicIndicator
+
+            # Check latest date in DB
+            stmt = select(func.max(EconomicIndicator.date)).where(EconomicIndicator.symbol == "DTB3")
+            result = await session.execute(stmt)
+            last_date = result.scalar()
+
+            if last_date:
+                # Fetch from the next day
+                date_from = last_date + timedelta(days=1)
+                logger.info(f"Found existing DTB3 data up to {last_date}. Fetching from {date_from}")
+            else:
+                # No data, fetch from start (1954-01-01)
+                date_from = date(1954, 1, 1)
+                logger.info("No existing DTB3 data found. Fetching from start (1954-01-01)")
+
+        # If date_from is still after date_to (e.g. data is up to date), skip fetch
+        if date_from > date_to:
+            logger.info(f"Data is up to date (Next fetch: {date_from}, To: {date_to}). Skipping update.")
+            return CronDailyUpdateResponse(
+                status="success",
+                message="Data is up to date",
+                total_symbols=1,
+                batch_count=0,
+                date_range={"from": str(date_from), "to": str(date_to)},
+                timestamp=start_time.isoformat(),
+                success_count=0
+            )
 
         logger.info(f"Date range for economic update: {date_from} to {date_to}")
 

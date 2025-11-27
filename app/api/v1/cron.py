@@ -355,18 +355,25 @@ async def daily_economic_update(
             from sqlalchemy import func, select
             from app.db.models import EconomicIndicator
 
-            # Check latest date in DB
-            stmt = select(func.max(EconomicIndicator.date)).where(EconomicIndicator.symbol == "DTB3")
+            # Check min and max date in DB
+            stmt = select(func.min(EconomicIndicator.date), func.max(EconomicIndicator.date)).where(EconomicIndicator.symbol == "DTB3")
             result = await session.execute(stmt)
-            last_date = result.scalar()
+            min_date, max_date = result.one()
 
-            if last_date:
-                # Fetch from the next day
-                date_from = last_date + timedelta(days=1)
-                logger.info(f"Found existing DTB3 data up to {last_date}. Fetching from {date_from}")
+            HISTORY_START = date(1954, 1, 1)
+
+            if min_date and max_date:
+                # If the oldest data is newer than 1955, assume we are missing history
+                if min_date > date(1955, 1, 1):
+                    date_from = HISTORY_START
+                    logger.info(f"Existing data starts at {min_date} (missing history). Fetching full history from {date_from}")
+                else:
+                    # We have history, just fetch incremental
+                    date_from = max_date + timedelta(days=1)
+                    logger.info(f"Full history exists (starts {min_date}). Fetching incremental from {date_from}")
             else:
-                # No data, fetch from start (1954-01-01)
-                date_from = date(1954, 1, 1)
+                # No data, fetch from start
+                date_from = HISTORY_START
                 logger.info("No existing DTB3 data found. Fetching from start (1954-01-01)")
 
         # If date_from is still after date_to (e.g. data is up to date), skip fetch

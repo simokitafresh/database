@@ -113,4 +113,25 @@ fi
 log "Successfully created fetch job with ID: $JOB_ID"
 log "Job details: $JOB_BODY"
 
+# Step 4: Trigger economic data update (FRED)
+log "Triggering daily economic data update..."
+ECO_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+  -X POST "${BASE_URL}/v1/daily-economic-update" \
+  -H "Content-Type: application/json" \
+  -H "X-Cron-Secret: ${CRON_SECRET_TOKEN}" \
+  -d '{"dry_run": false}' \
+  --max-time 60)
+
+ECO_HTTP_STATUS=$(echo "$ECO_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+ECO_BODY=$(echo "$ECO_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+if [ "$ECO_HTTP_STATUS" != "200" ]; then
+    log "WARNING: Failed to update economic data. HTTP Status: $ECO_HTTP_STATUS"
+    log "Response: $ECO_BODY"
+    # Don't exit with error, as stock data update was successful
+else
+    log "Successfully updated economic data"
+    log "Response: $ECO_BODY"
+fi
+
 log "Daily stock data update job initiated successfully"

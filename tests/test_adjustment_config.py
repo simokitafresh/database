@@ -27,16 +27,22 @@ class TestAdjustmentSettingsDefaults:
         assert settings.ADJUSTMENT_SAMPLE_POINTS == 10
 
     def test_adjustment_min_data_age_days_default(self):
-        """Test ADJUSTMENT_MIN_DATA_AGE_DAYS defaults to 60."""
+        """Test ADJUSTMENT_MIN_DATA_AGE_DAYS defaults to 7 (reduced to catch recent splits)."""
         from app.core.config import Settings
         settings = Settings()
-        assert settings.ADJUSTMENT_MIN_DATA_AGE_DAYS == 60
+        assert settings.ADJUSTMENT_MIN_DATA_AGE_DAYS == 7
 
     def test_adjustment_auto_fix_default(self):
         """Test ADJUSTMENT_AUTO_FIX defaults to False."""
         from app.core.config import Settings
         settings = Settings()
         assert settings.ADJUSTMENT_AUTO_FIX is False
+
+    def test_adjustment_check_full_history_default(self):
+        """Test ADJUSTMENT_CHECK_FULL_HISTORY defaults to True."""
+        from app.core.config import Settings
+        settings = Settings()
+        assert settings.ADJUSTMENT_CHECK_FULL_HISTORY is True
 
 
 class TestAdjustmentSettingsFromEnv:

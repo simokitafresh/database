@@ -47,7 +47,8 @@ class TestEnumsAndDataclasses:
         assert thresholds.special_div_threshold_pct == 2.0
         assert thresholds.spinoff_threshold_pct == 15.0
         assert thresholds.sample_points == 10
-        assert thresholds.min_data_age_days == 60
+        assert thresholds.min_data_age_days == 7  # Reduced from 60 to catch recent splits
+        assert thresholds.check_full_history is True  # New setting
 
     def test_detection_thresholds_custom(self):
         """Test DetectionThresholds with custom values."""
@@ -59,6 +60,7 @@ class TestEnumsAndDataclasses:
             spinoff_threshold_pct=25.0,
             sample_points=15,
             min_data_age_days=90,
+            check_full_history=False,
         )
         
         assert thresholds.float_noise_pct == 0.001
@@ -68,6 +70,7 @@ class TestEnumsAndDataclasses:
         assert thresholds.spinoff_threshold_pct == 25.0
         assert thresholds.sample_points == 15
         assert thresholds.min_data_age_days == 90
+        assert thresholds.check_full_history is False
 
     def test_adjustment_event_creation(self):
         """Test AdjustmentEvent dataclass creation."""
@@ -623,7 +626,7 @@ class TestGetSamplePrices:
     
     @pytest.mark.asyncio
     async def test_sample_prices_respects_sample_points_limit(self, detector_custom_thresholds):
-        """Test that samples respect the sample_points limit."""
+        """Test that samples respect the sample_points limit with reasonable overhead."""
         from datetime import date, timedelta
         from unittest.mock import AsyncMock, MagicMock
         
@@ -642,9 +645,9 @@ class TestGetSamplePrices:
         
         samples = await detector_custom_thresholds.get_sample_prices(mock_session, "AAPL")
         
-        # Should not exceed sample_points + 2 (for guaranteed first/last)
-        # Actually should be around sample_points
-        assert len(samples) <= detector_custom_thresholds.thresholds.sample_points + 2
+        # Should not exceed sample_points + 4 (for guaranteed first/last + recent period extras)
+        # The enhanced sampling adds a few extra points from recent period for better split detection
+        assert len(samples) <= detector_custom_thresholds.thresholds.sample_points + 4
     
     @pytest.mark.asyncio
     async def test_sample_prices_two_data_points(self, detector):
@@ -1030,58 +1033,87 @@ class TestAutoFix:
     async def test_auto_fix_deletes_prices(self, detector):
         """Test that auto_fix deletes existing prices."""
         from unittest.mock import AsyncMock, MagicMock, patch
+        from datetime import date
         
         mock_session = AsyncMock()
+        
+        # Mock date range query result
+        mock_range_result = MagicMock()
+        mock_range_row = MagicMock()
+        mock_range_row.first_date = date(2020, 1, 1)
+        mock_range_row.last_date = date(2024, 12, 1)
+        mock_range_result.fetchone.return_value = mock_range_row
         
         # Mock delete result
         mock_delete_result = MagicMock()
         mock_delete_result.rowcount = 100
-        mock_session.execute.return_value = mock_delete_result
+        
+        # First call returns range, second returns delete result
+        mock_session.execute.side_effect = [mock_range_result, mock_delete_result]
         
         # Mock FetchJob
         mock_job = MagicMock()
-        mock_job.id = "test-job-id"
+        mock_job.job_id = "test-job-id"
         
         with patch('app.db.models.FetchJob', return_value=mock_job):
             result = await detector.auto_fix_symbol(mock_session, "AAPL")
         
         assert result["symbol"] == "AAPL"
         assert result["deleted_rows"] == 100
-        mock_session.execute.assert_called()  # Delete was executed
+        assert result["date_range"] is not None
     
     @pytest.mark.asyncio
     async def test_auto_fix_creates_job(self, detector):
-        """Test that auto_fix creates a fetch job."""
+        """Test that auto_fix creates a fetch job with proper date range."""
         from unittest.mock import AsyncMock, MagicMock, patch
+        from datetime import date
         
         mock_session = AsyncMock()
+        
+        # Mock date range query
+        mock_range_result = MagicMock()
+        mock_range_row = MagicMock()
+        mock_range_row.first_date = date(2020, 1, 1)
+        mock_range_row.last_date = date(2024, 12, 1)
+        mock_range_result.fetchone.return_value = mock_range_row
+        
         mock_delete_result = MagicMock()
         mock_delete_result.rowcount = 50
-        mock_session.execute.return_value = mock_delete_result
+        
+        mock_session.execute.side_effect = [mock_range_result, mock_delete_result]
         
         mock_job = MagicMock()
-        mock_job.id = "new-job-123"
+        mock_job.job_id = "new-job-123"
         
         with patch('app.db.models.FetchJob', return_value=mock_job):
             result = await detector.auto_fix_symbol(mock_session, "AAPL")
         
         assert result["job_created"] is True
-        assert result["job_id"] == "new-job-123"
+        assert result["job_id"] is not None
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_auto_fix_returns_stats(self, detector):
-        """Test that auto_fix returns proper statistics."""
+        """Test that auto_fix returns proper statistics including date_range."""
         from unittest.mock import AsyncMock, MagicMock, patch
+        from datetime import date
         
         mock_session = AsyncMock()
+        
+        mock_range_result = MagicMock()
+        mock_range_row = MagicMock()
+        mock_range_row.first_date = date(2015, 1, 1)
+        mock_range_row.last_date = date(2024, 11, 1)
+        mock_range_result.fetchone.return_value = mock_range_row
+        
         mock_delete_result = MagicMock()
         mock_delete_result.rowcount = 75
-        mock_session.execute.return_value = mock_delete_result
+        
+        mock_session.execute.side_effect = [mock_range_result, mock_delete_result]
         
         mock_job = MagicMock()
-        mock_job.id = "stats-job-456"
+        mock_job.job_id = "stats-job-456"
         
         with patch('app.db.models.FetchJob', return_value=mock_job):
             result = await detector.auto_fix_symbol(mock_session, "MSFT")
@@ -1090,12 +1122,14 @@ class TestAutoFix:
         assert "deleted_rows" in result
         assert "job_created" in result
         assert "job_id" in result
+        assert "date_range" in result
         assert "timestamp" in result
         assert "error" in result
         
         assert result["symbol"] == "MSFT"
         assert result["deleted_rows"] == 75
         assert result["error"] is None
+        assert result["date_range"]["from"] == "2015-01-01"
     
     @pytest.mark.asyncio
     async def test_auto_fix_handles_errors(self, detector):

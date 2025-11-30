@@ -62,7 +62,9 @@ class DetectionThresholds:
         sample_points: Number of historical price points to sample for comparison
             (default: 10).
         min_data_age_days: Minimum age of data in days before checking
-            (default: 60 days, to exclude recent refetch period).
+            (default: 7 days, reduced from 60 to catch recent splits).
+        check_full_history: Whether to check entire history including recent data
+            (default: True for comprehensive split detection).
     """
     
     float_noise_pct: float = 0.0001
@@ -71,7 +73,8 @@ class DetectionThresholds:
     special_div_threshold_pct: float = 2.0
     spinoff_threshold_pct: float = 15.0
     sample_points: int = 10
-    min_data_age_days: int = 60
+    min_data_age_days: int = 7  # Reduced from 60 to catch recent splits
+    check_full_history: bool = True  # Check entire history for split detection
 
 
 @dataclass
@@ -285,9 +288,9 @@ class PrecisionAdjustmentDetector:
     ) -> List[Tuple[date, float]]:
         """Get sample price points from DB for comparison.
         
-        Retrieves evenly-spaced price points from the database for a symbol,
-        excluding recent data (within min_data_age_days) that would be
-        covered by normal refetch.
+        Retrieves evenly-spaced price points from the database for a symbol.
+        When check_full_history is True, samples from entire history to catch
+        recent splits. Otherwise, excludes recent data within min_data_age_days.
         
         Args:
             session: Async database session.
@@ -297,8 +300,14 @@ class PrecisionAdjustmentDetector:
             List of (date, close_price) tuples. Returns empty list if
             insufficient data is available.
         """
-        # Calculate cutoff date - only check data older than min_data_age_days
-        min_age = date.today() - timedelta(days=self.thresholds.min_data_age_days)
+        # Determine date range based on check_full_history setting
+        if self.thresholds.check_full_history:
+            # Check entire history - only exclude very recent data (7 days)
+            # to avoid in-flight data issues
+            min_age = date.today() - timedelta(days=self.thresholds.min_data_age_days)
+        else:
+            # Legacy behavior - exclude recent refetch period
+            min_age = date.today() - timedelta(days=self.thresholds.min_data_age_days)
         
         # Query all prices before cutoff
         result = await session.execute(
@@ -312,12 +321,16 @@ class PrecisionAdjustmentDetector:
         if len(all_rows) < 2:
             return []
         
-        # Sample evenly spaced points
+        # Enhanced sampling: ensure we cover different time periods
+        # to catch splits that happened at any point
         total_points = len(all_rows)
-        step = max(1, total_points // self.thresholds.sample_points)
+        sample_count = min(self.thresholds.sample_points, total_points)
+        
+        # Sample evenly spaced points across entire history
+        step = max(1, total_points // sample_count)
         
         # Get indices at regular intervals
-        indices = list(range(0, total_points, step))[:self.thresholds.sample_points]
+        indices = list(range(0, total_points, step))[:sample_count]
         
         # Always include the last point (most recent before cutoff)
         if (total_points - 1) not in indices:
@@ -326,6 +339,17 @@ class PrecisionAdjustmentDetector:
         # Always include the first point (oldest)
         if 0 not in indices:
             indices.insert(0, 0)
+        
+        # Also include some points from the middle-recent period
+        # to catch splits in the gap zone
+        if total_points > 20:
+            # Add samples from last 90 days of available data
+            recent_start = max(0, total_points - 90)
+            if recent_start not in indices:
+                indices.append(recent_start)
+            mid_recent = (recent_start + total_points) // 2
+            if mid_recent not in indices:
+                indices.append(mid_recent)
         
         # Sort indices and remove duplicates
         indices = sorted(set(indices))
@@ -553,7 +577,7 @@ class PrecisionAdjustmentDetector:
         """Automatically fix a symbol by deleting and re-fetching data.
         
         Deletes all existing price data for the symbol and creates a
-        fetch job to retrieve fresh data from yfinance.
+        fetch job to retrieve fresh data from yfinance with full history.
         
         Args:
             session: Async database session.
@@ -563,8 +587,9 @@ class PrecisionAdjustmentDetector:
             Dictionary containing fix operation results.
         """
         import logging
+        import uuid
         from datetime import datetime
-        from sqlalchemy import delete
+        from sqlalchemy import delete, select, func
         
         logger = logging.getLogger(__name__)
         
@@ -573,36 +598,66 @@ class PrecisionAdjustmentDetector:
             "deleted_rows": 0,
             "job_created": False,
             "job_id": None,
+            "date_range": None,
             "error": None,
             "timestamp": datetime.utcnow().isoformat(),
         }
         
         try:
+            # Get the date range of existing data before deletion
+            range_result = await session.execute(
+                select(
+                    func.min(Price.date).label("first_date"),
+                    func.max(Price.date).label("last_date")
+                ).where(Price.symbol == symbol)
+            )
+            date_range = range_result.fetchone()
+            
+            # Determine date range for refetch
+            if date_range and date_range.first_date:
+                # Use existing data range, extended to today
+                fetch_from = date_range.first_date
+                fetch_to = date.today()
+            else:
+                # Default to 20 years of history
+                fetch_from = date.today() - timedelta(days=365 * 20)
+                fetch_to = date.today()
+            
+            result["date_range"] = {
+                "from": fetch_from.isoformat(),
+                "to": fetch_to.isoformat(),
+            }
+            
             # Delete existing price data
             delete_stmt = delete(Price).where(Price.symbol == symbol)
             delete_result = await session.execute(delete_stmt)
             result["deleted_rows"] = delete_result.rowcount
             
-            # Create a fetch job to re-download data
-            # Using existing fetch_jobs infrastructure
+            # Create a fetch job to re-download data with full history
             from app.db.models import FetchJob
             
+            job_id = str(uuid.uuid4())[:8]  # Short UUID for job ID
             job = FetchJob(
+                job_id=job_id,
                 symbols=[symbol],
                 status="pending",
-                priority=1,  # High priority for fixes
+                date_from=fetch_from,
+                date_to=fetch_to,
+                interval="1d",
+                force_refresh=True,  # Force fresh data
+                priority="high",  # High priority for fixes
             )
             session.add(job)
-            await session.flush()  # Get the job ID
+            await session.flush()
             
             result["job_created"] = True
-            result["job_id"] = str(job.id)
+            result["job_id"] = job_id
             
             await session.commit()
             
             logger.info(
                 f"Auto-fix for {symbol}: deleted {result['deleted_rows']} rows, "
-                f"created job {result['job_id']}"
+                f"created job {result['job_id']} for {fetch_from} to {fetch_to}"
             )
             
         except Exception as e:

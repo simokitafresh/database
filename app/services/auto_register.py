@@ -212,9 +212,11 @@ async def batch_register_symbols(
             logger.error(f"Failed to register {symbol}: {e}")
             return symbol, False
     
-    # Process all symbols concurrently
-    tasks = [register_one(symbol) for symbol in symbols]
-    results = await asyncio.gather(*tasks)
+    # Process all symbols sequentially to avoid concurrent session usage
+    results = []
+    for symbol in symbols:
+        result = await register_one(symbol)
+        results.append(result)
     
     # Convert to dictionary
     result_dict = dict(results)

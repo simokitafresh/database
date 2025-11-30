@@ -70,14 +70,17 @@ async def process_fetch_job(
 
             # Process symbols with concurrency control
             semaphore = asyncio.Semaphore(max_concurrency)
+            # Lock for synchronizing session access (specifically for progress updates)
+            session_lock = asyncio.Lock()
             results = []
 
             async def fetch_single_symbol(symbol: str) -> FetchJobResult:
                 async with semaphore:
                     try:
                         # Update current symbol in progress
-                        progress.current_symbol = symbol
-                        await update_job_progress(session, job_id, progress)
+                        async with session_lock:
+                            progress.current_symbol = symbol
+                            await update_job_progress(session, job_id, progress)
 
                         # Fetch data for the symbol
                         result = await fetch_symbol_data(
@@ -89,27 +92,30 @@ async def process_fetch_job(
                         )
 
                         # Update progress
-                        progress.completed_symbols += 1
-                        progress.fetched_rows += result.rows_fetched
-                        progress.percent = (
-                            progress.completed_symbols / progress.total_symbols
-                        ) * 100.0
-                        progress.current_symbol = None
+                        async with session_lock:
+                            progress.completed_symbols += 1
+                            progress.fetched_rows += result.rows_fetched
+                            progress.percent = (
+                                progress.completed_symbols / progress.total_symbols
+                            ) * 100.0
+                            progress.current_symbol = None
 
-                        await update_job_progress(session, job_id, progress)
+                            await update_job_progress(session, job_id, progress)
 
                         logger.info(f"Completed {symbol}: {result.rows_fetched} rows")
                         return result
 
                     except Exception as e:
                         logger.error(f"Failed to fetch {symbol}: {e}")
-                        progress.completed_symbols += 1
-                        progress.percent = (
-                            progress.completed_symbols / progress.total_symbols
-                        ) * 100.0
-                        progress.current_symbol = None
+                        
+                        async with session_lock:
+                            progress.completed_symbols += 1
+                            progress.percent = (
+                                progress.completed_symbols / progress.total_symbols
+                            ) * 100.0
+                            progress.current_symbol = None
 
-                        await update_job_progress(session, job_id, progress)
+                            await update_job_progress(session, job_id, progress)
 
                         return FetchJobResult(
                             symbol=symbol, status="failed", rows_fetched=0, error=str(e)

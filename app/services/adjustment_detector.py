@@ -16,7 +16,11 @@ from typing import Any, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.queries.adjustments import get_adjustment_sample_data, get_symbols_for_scan
+from app.db.queries.adjustments import (
+    get_adjustment_sample_data,
+    get_symbols_for_scan,
+    get_closest_price_before_date,
+)
 from app.services.adjustment_fixer import AdjustmentFixer
 
 
@@ -369,6 +373,7 @@ class PrecisionAdjustmentDetector:
             ScanResult containing detected events and recommendations.
         """
         import yfinance as yf
+        import pandas as pd
         
         result = ScanResult(symbol=symbol)
         
@@ -384,6 +389,36 @@ class PrecisionAdjustmentDetector:
             
             # Fetch current adjusted prices from yfinance
             ticker = yf.Ticker(symbol)
+            
+            # --- Enhanced Split Detection ---
+            # Explicitly check for splits reported by yfinance that might be missing in our DB
+            try:
+                splits = ticker.splits
+                if not splits.empty:
+                    # Filter splits that are relevant to our data range
+                    # We only care about splits that happened after our oldest data point
+                    oldest_db_date = samples[0][0]
+                    relevant_splits = splits[splits.index.date > oldest_db_date]
+                    
+                    for split_date_ts, ratio in relevant_splits.items():
+                        split_date = split_date_ts.date()
+                        
+                        # Find the closest DB price BEFORE this split
+                        pre_split_point = await get_closest_price_before_date(
+                            session, symbol, split_date
+                        )
+                        
+                        if pre_split_point:
+                            # Add this specific point to samples if not already present
+                            if pre_split_point not in samples:
+                                samples.append(pre_split_point)
+                                # Re-sort samples by date
+                                samples.sort(key=lambda x: x[0])
+            except Exception as e:
+                # Don't fail the whole detection if split check fails, just log it
+                # logger.warning(f"Failed to check explicit splits for {symbol}: {e}")
+                pass
+            # -------------------------------
             
             # Get history covering all sample dates
             start_date = samples[0][0].strftime('%Y-%m-%d')

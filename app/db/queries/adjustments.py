@@ -33,6 +33,34 @@ async def get_adjustment_sample_data(
     return [(row[0], float(row[1])) for row in result.fetchall()]
 
 
+async def get_closest_price_before_date(
+    session: AsyncSession,
+    symbol: str,
+    target_date: date,
+) -> Tuple[date, float] | None:
+    """
+    Get the closest price point for a symbol before the target date.
+    
+    Args:
+        session: Async database session.
+        symbol: Ticker symbol.
+        target_date: Target date.
+        
+    Returns:
+        Tuple of (date, close_price) or None if no data found.
+    """
+    result = await session.execute(
+        select(Price.date, Price.close)
+        .where(and_(Price.symbol == symbol, Price.date < target_date))
+        .order_by(Price.date.desc())
+        .limit(1)
+    )
+    row = result.fetchone()
+    if row:
+        return (row[0], float(row[1]))
+    return None
+
+
 async def get_symbols_for_scan(session: AsyncSession) -> List[str]:
     """
     Get all active symbols for scanning.

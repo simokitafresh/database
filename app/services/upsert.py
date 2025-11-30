@@ -172,7 +172,9 @@ async def upsert_prices(
         
         # PostgreSQL doesn't return separate insert/update counts from ON CONFLICT
         # We'll estimate based on affected rows
-        affected_rows = result.rowcount or len(batch)
+        affected_rows = result.rowcount
+        if affected_rows < 0:
+            affected_rows = len(batch)
         
         # For estimation, assume 70% are updates if not forcing
         if force_update:

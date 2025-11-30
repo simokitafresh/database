@@ -188,25 +188,21 @@ async def fetch_symbol_data(
         FetchJobResult with fetch status and row count
     """
     try:
-        import pandas as pd
-        import yfinance as yf
+        from app.services.fetcher import fetch_prices
+        from app.services.upsert import upsert_prices, df_to_rows
 
-        from app.services.upsert import upsert_prices
-
-        # Create ticker
-        ticker = yf.Ticker(symbol)
-
-        # Download data
+        # Fetch data using the robust fetcher service
         logger.info(f"Downloading {symbol} from {date_from} to {date_to}")
-        df = ticker.history(
+        
+        # fetch_prices expects settings to be passed
+        df = fetch_prices(
+            symbol=symbol,
             start=date_from,
             end=date_to,
-            interval=interval,
-            auto_adjust=True,
-            prepost=False,
+            settings=settings
         )
 
-        if df.empty:
+        if df is None or df.empty:
             logger.warning(f"No data returned for {symbol}")
             return FetchJobResult(
                 symbol=symbol,
@@ -215,23 +211,8 @@ async def fetch_symbol_data(
                 error="No data available for the specified date range",
             )
 
-        # Reset index to get date as column
-        df = df.reset_index()
-
-        # Prepare data for upsert
-        rows_to_upsert = []
-        for _, row in df.iterrows():
-            price_data = {
-                "symbol": symbol,
-                "date": row["Date"].date() if hasattr(row["Date"], "date") else row["Date"],
-                "open": float(row["Open"]) if pd.notna(row["Open"]) else None,
-                "high": float(row["High"]) if pd.notna(row["High"]) else None,
-                "low": float(row["Low"]) if pd.notna(row["Low"]) else None,
-                "close": float(row["Close"]) if pd.notna(row["Close"]) else None,
-                "volume": int(row["Volume"]) if pd.notna(row["Volume"]) else None,
-                "last_updated": datetime.utcnow(),
-            }
-            rows_to_upsert.append(price_data)
+        # Prepare data for upsert using the helper
+        rows_to_upsert = df_to_rows(df, symbol=symbol, source="yfinance")
 
         # 独立したセッションを作成（単一タスク用）
         _, SessionLocal = create_engine_and_sessionmaker(
@@ -265,14 +246,6 @@ async def fetch_symbol_data(
                 error=None,
             )
 
-    except ImportError:
-        logger.error("yfinance not installed. Install with: pip install yfinance")
-        return FetchJobResult(
-            symbol=symbol,
-            status="failed",
-            rows_fetched=0,
-            error="yfinance package not installed",
-        )
     except Exception as e:
         logger.error(f"Error fetching {symbol}: {e}")
         return FetchJobResult(

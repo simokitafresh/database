@@ -100,6 +100,18 @@ def fetch_prices(
                     backoff.reset()  # Reset on success
                     return cleaned_df
                 
+                # Special handling for common indices that might be missing the caret
+                if symbol in {"IRX", "FVX", "TNX", "TYX", "VIX", "GSPC", "DJI", "IXIC", "SOX", "RUT"} and not symbol.startswith("^"):
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Retrying {symbol} as ^{symbol}")
+                    return fetch_prices(
+                        f"^{symbol}", 
+                        start, 
+                        end, 
+                        settings=settings, 
+                        last_date=last_date
+                    )
+
                 # If fallback also failed (returned None or empty), we might want to retry or give up?
                 # The original logic retried on exceptions, but if download returns empty DF, it might not raise exception.
                 # If yf.download returns empty DF, it usually means no data.

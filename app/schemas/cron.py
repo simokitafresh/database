@@ -17,7 +17,7 @@ class CronDailyUpdateRequest(BaseModel):
     )
     date_to: Optional[str] = Field(None, description="End date (YYYY-MM-DD), defaults to yesterday")
     check_adjustments: bool = Field(
-        default=False,
+        default=True,
         description="If True, run adjustment check after data update"
     )
     auto_fix_adjustments: bool = Field(

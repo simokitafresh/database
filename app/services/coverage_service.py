@@ -455,7 +455,9 @@ async def ensure_coverage_parallel(
         """単一銘柄の処理（既存のensure_coverageのロジックを利用）"""
         try:
             # アドバイザリロック取得
-            async with with_symbol_lock(session, symbol): # Fixed: using with_symbol_lock wrapper which returns None, wait, with_symbol_lock is async def, so await it?
+            # アドバイザリロック取得
+            from app.services.redis_utils import symbol_lock
+            async with symbol_lock(symbol):
                 # No, with_symbol_lock in queries.py was:
                 # async def with_symbol_lock(...) -> None:
                 #    async with symbol_lock(symbol): pass

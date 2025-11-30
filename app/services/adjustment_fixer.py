@@ -50,15 +50,11 @@ class AdjustmentFixer:
             )
             date_range = range_result.fetchone()
             
-            # Determine date range for refetch
-            if date_range and date_range.first_date:
-                # Use existing data range, extended to today
-                fetch_from = date_range.first_date
-                fetch_to = date.today()
-            else:
-                # Default to 20 years of history
-                fetch_from = date.today() - timedelta(days=365 * 20)
-                fetch_to = date.today()
+            # Always fetch full history for adjustments to ensure split consistency
+            # This ensures that even if we only had partial data, we get the complete history
+            # which is crucial for split adjustments to propagate correctly.
+            fetch_from = date(1970, 1, 1)
+            fetch_to = date.today()
             
             result["date_range"] = {
                 "from": fetch_from.isoformat(),

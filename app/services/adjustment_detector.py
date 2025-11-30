@@ -14,10 +14,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from typing import Any, List, Optional, Tuple
 
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Price
+from app.db.queries.adjustments import get_adjustment_sample_data, get_symbols_for_scan
+from app.services.adjustment_fixer import AdjustmentFixer
 
 
 class AdjustmentType(Enum):
@@ -309,13 +309,8 @@ class PrecisionAdjustmentDetector:
             # Legacy behavior - exclude recent refetch period
             min_age = date.today() - timedelta(days=self.thresholds.min_data_age_days)
         
-        # Query all prices before cutoff
-        result = await session.execute(
-            select(Price.date, Price.close)
-            .where(and_(Price.symbol == symbol, Price.date < min_age))
-            .order_by(Price.date.asc())
-        )
-        all_rows = result.fetchall()
+        # Use query helper
+        all_rows = await get_adjustment_sample_data(session, symbol, min_age)
         
         # Need at least 2 data points for meaningful comparison
         if len(all_rows) < 2:
@@ -492,16 +487,12 @@ class PrecisionAdjustmentDetector:
         """
         import logging
         from datetime import datetime
-        from app.db.models import Symbol
         
         logger = logging.getLogger(__name__)
         
         # Get symbols to scan if not provided
         if symbols is None:
-            result = await session.execute(
-                select(Symbol.symbol).where(Symbol.is_active == True)
-            )
-            symbols = [row[0] for row in result.fetchall()]
+            symbols = await get_symbols_for_scan(session)
         
         scan_result = {
             "scan_timestamp": datetime.utcnow().isoformat(),
@@ -516,6 +507,8 @@ class PrecisionAdjustmentDetector:
                 "by_severity": {},
             },
         }
+        
+        fixer = AdjustmentFixer(session) if auto_fix else None
         
         for i, symbol in enumerate(symbols):
             logger.info(f"Scanning symbol {i+1}/{len(symbols)}: {symbol}")
@@ -545,8 +538,8 @@ class PrecisionAdjustmentDetector:
                         )
                     
                     # Auto-fix if enabled
-                    if auto_fix:
-                        fix_result = await self.auto_fix_symbol(session, symbol)
+                    if fixer:
+                        fix_result = await fixer.auto_fix_symbol(symbol)
                         scan_result["fixed"].append({
                             "symbol": symbol,
                             **fix_result,
@@ -568,101 +561,3 @@ class PrecisionAdjustmentDetector:
         )
         
         return scan_result
-
-    async def auto_fix_symbol(
-        self,
-        session: AsyncSession,
-        symbol: str,
-    ) -> dict[str, Any]:
-        """Automatically fix a symbol by deleting and re-fetching data.
-        
-        Deletes all existing price data for the symbol and creates a
-        fetch job to retrieve fresh data from yfinance with full history.
-        
-        Args:
-            session: Async database session.
-            symbol: Symbol to fix.
-            
-        Returns:
-            Dictionary containing fix operation results.
-        """
-        import logging
-        import uuid
-        from datetime import datetime
-        from sqlalchemy import delete, select, func
-        
-        logger = logging.getLogger(__name__)
-        
-        result = {
-            "symbol": symbol,
-            "deleted_rows": 0,
-            "job_created": False,
-            "job_id": None,
-            "date_range": None,
-            "error": None,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-        
-        try:
-            # Get the date range of existing data before deletion
-            range_result = await session.execute(
-                select(
-                    func.min(Price.date).label("first_date"),
-                    func.max(Price.date).label("last_date")
-                ).where(Price.symbol == symbol)
-            )
-            date_range = range_result.fetchone()
-            
-            # Determine date range for refetch
-            if date_range and date_range.first_date:
-                # Use existing data range, extended to today
-                fetch_from = date_range.first_date
-                fetch_to = date.today()
-            else:
-                # Default to 20 years of history
-                fetch_from = date.today() - timedelta(days=365 * 20)
-                fetch_to = date.today()
-            
-            result["date_range"] = {
-                "from": fetch_from.isoformat(),
-                "to": fetch_to.isoformat(),
-            }
-            
-            # Delete existing price data
-            delete_stmt = delete(Price).where(Price.symbol == symbol)
-            delete_result = await session.execute(delete_stmt)
-            result["deleted_rows"] = delete_result.rowcount
-            
-            # Create a fetch job to re-download data with full history
-            from app.db.models import FetchJob
-            
-            job_id = str(uuid.uuid4())[:8]  # Short UUID for job ID
-            job = FetchJob(
-                job_id=job_id,
-                symbols=[symbol],
-                status="pending",
-                date_from=fetch_from,
-                date_to=fetch_to,
-                interval="1d",
-                force_refresh=True,  # Force fresh data
-                priority="high",  # High priority for fixes
-            )
-            session.add(job)
-            await session.flush()
-            
-            result["job_created"] = True
-            result["job_id"] = job_id
-            
-            await session.commit()
-            
-            logger.info(
-                f"Auto-fix for {symbol}: deleted {result['deleted_rows']} rows, "
-                f"created job {result['job_id']} for {fetch_from} to {fetch_to}"
-            )
-            
-        except Exception as e:
-            logger.error(f"Auto-fix failed for {symbol}: {str(e)}")
-            result["error"] = str(e)
-            await session.rollback()
-        
-        return result

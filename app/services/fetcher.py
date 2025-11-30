@@ -1,12 +1,11 @@
 import asyncio
 import logging
 import time
-import math
+import io
 from datetime import date, timedelta
 from typing import Optional, Dict, List, Tuple, AsyncIterator
 from urllib.error import HTTPError as URLlibHTTPError
 from contextlib import redirect_stdout, redirect_stderr
-import io
 
 import pandas as pd
 import requests
@@ -16,107 +15,11 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import Settings
 from app.core.logging import error_context, get_error_metrics
+from app.core.rate_limit import get_rate_limiter, get_backoff, RateLimiter, ExponentialBackoff
+from app.services.data_cleaner import DataCleaner
 
 # yfinance の冗長な失敗ログ（"1 Failed download: ... possibly delisted" 等）を抑制
 logging.getLogger("yfinance").setLevel(logging.ERROR)
-
-
-class RateLimiter:
-    """Token bucket rate limiter for Yahoo Finance API requests."""
-    
-    def __init__(self, rate_per_second: float, burst_size: int):
-        self.rate_per_second = rate_per_second
-        self.burst_size = burst_size
-        self.tokens = burst_size
-        self.last_update = time.time()
-        self._lock = asyncio.Lock()
-    
-    async def acquire(self) -> None:
-        """Acquire a token from the bucket, waiting if necessary."""
-        async with self._lock:
-            now = time.time()
-            # Add tokens based on elapsed time
-            elapsed = now - self.last_update
-            self.tokens = min(self.burst_size, self.tokens + elapsed * self.rate_per_second)
-            self.last_update = now
-            
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return
-            
-            # Calculate wait time for next token
-            wait_time = (1 - self.tokens) / self.rate_per_second
-            await asyncio.sleep(wait_time)
-            self.tokens = 0
-            self.last_update = time.time()
-    
-    def acquire_sync(self) -> None:
-        """Synchronous version of acquire for use in sync functions."""
-        # Simple token bucket implementation for sync context
-        now = time.time()
-        elapsed = now - self.last_update
-        self.tokens = min(self.burst_size, self.tokens + elapsed * self.rate_per_second)
-        self.last_update = now
-        
-        if self.tokens < 1:
-            # Simple delay calculation
-            wait_time = (1 - self.tokens) / self.rate_per_second
-            time.sleep(min(wait_time, 1.0))  # Cap at 1 second to avoid long delays
-            self.tokens = 0
-            self.last_update = time.time()
-        else:
-            self.tokens -= 1
-
-
-class ExponentialBackoff:
-    """Exponential backoff with jitter for retry logic."""
-    
-    def __init__(self, base_delay: float, multiplier: float, max_delay: float):
-        self.base_delay = base_delay
-        self.multiplier = multiplier
-        self.max_delay = max_delay
-        self.attempt = 0
-    
-    def reset(self):
-        """Reset the backoff counter."""
-        self.attempt = 0
-    
-    def get_delay(self) -> float:
-        """Get the next delay duration."""
-        if self.attempt == 0:
-            delay = 0
-        else:
-            delay = min(self.base_delay * (self.multiplier ** (self.attempt - 1)), self.max_delay)
-        self.attempt += 1
-        return delay
-
-
-# Global rate limiter instance
-_rate_limiter: Optional[RateLimiter] = None
-_backoff: Optional[ExponentialBackoff] = None
-
-
-def get_rate_limiter(settings: Settings) -> RateLimiter:
-    """Get or create the global rate limiter instance."""
-    global _rate_limiter
-    if _rate_limiter is None:
-        _rate_limiter = RateLimiter(
-            rate_per_second=settings.YF_RATE_LIMIT_REQUESTS_PER_SECOND,
-            burst_size=settings.YF_RATE_LIMIT_BURST_SIZE
-        )
-    return _rate_limiter
-
-
-def get_backoff(settings: Settings) -> ExponentialBackoff:
-    """Get or create the global backoff instance."""
-    global _backoff
-    if _backoff is None:
-        _backoff = ExponentialBackoff(
-            base_delay=settings.YF_RATE_LIMIT_BACKOFF_BASE_DELAY,
-            multiplier=settings.YF_RATE_LIMIT_BACKOFF_MULTIPLIER,
-            max_delay=settings.YF_RATE_LIMIT_MAX_BACKOFF_DELAY
-        )
-    return _backoff
 
 
 def fetch_prices(
@@ -185,27 +88,23 @@ def fetch_prices(
                     progress=False,
                     timeout=settings.FETCH_TIMEOUT_SECONDS,
                 )
-                df = df.rename(
-                    columns={
-                        "Open": "open",
-                        "High": "high",
-                        "Low": "low",
-                        "Close": "close",
-                        "Adj Close": "adj_close",
-                        "Volume": "volume",
-                    }
-                )
-                if "adj_close" in df.columns:
-                    df = df.drop(columns=["adj_close"])
-
-                # Guard against empty frames or missing required columns
-                required_columns = {"open", "high", "low", "close", "volume"}
-                if df is None or df.empty or not required_columns.issubset(df.columns):
-                    # Try fallback method
-                    df = _fetch_with_fallback(symbol, fetch_start, fetch_end, settings)
                 
-                backoff.reset()  # Reset on success
-                return df
+                # Clean and validate data
+                cleaned_df = DataCleaner.clean_price_data(df)
+                
+                if cleaned_df is None:
+                    # Try fallback method
+                    cleaned_df = _fetch_with_fallback(symbol, fetch_start, fetch_end, settings)
+                
+                if cleaned_df is not None:
+                    backoff.reset()  # Reset on success
+                    return cleaned_df
+                
+                # If fallback also failed (returned None or empty), we might want to retry or give up?
+                # The original logic retried on exceptions, but if download returns empty DF, it might not raise exception.
+                # If yf.download returns empty DF, it usually means no data.
+                # We should probably return empty DF here if no exception raised.
+                return pd.DataFrame()
                 
             except (
                 URLlibHTTPError,
@@ -257,7 +156,7 @@ def _fetch_with_fallback(
     start: date, 
     end: date, 
     settings: Settings
-) -> pd.DataFrame:
+) -> Optional[pd.DataFrame]:
     """Fallback fetch method using Ticker.history."""
     try:
         tk = yf.Ticker(symbol)
@@ -268,28 +167,14 @@ def _fetch_with_fallback(
                 auto_adjust=True,
                 timeout=settings.FETCH_TIMEOUT_SECONDS,
             )
-        df = df.rename(
-            columns={
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Adj Close": "adj_close",
-                "Volume": "volume",
-            }
-        )
-        if "adj_close" in df.columns:
-            df = df.drop(columns=["adj_close"])
         
-        required_columns = {"open", "high", "low", "close", "volume"}
-        if df is not None and not df.empty and required_columns.issubset(df.columns):
-            return df
+        return DataCleaner.clean_price_data(df)
         
     except Exception as e:
         logger = logging.getLogger(__name__)
         logger.warning(f"Fallback fetch failed for {symbol}: {e}")
     
-    return pd.DataFrame()
+    return None
 
 
 async def fetch_prices_batch(

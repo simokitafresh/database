@@ -227,9 +227,68 @@ async def batch_register_symbols(
     return result_dict
 
 
+
+async def ensure_symbols_registered(
+    session: AsyncSession, 
+    symbols: List[str]
+) -> None:
+    """
+    Ensure all symbols are registered in the database with parallel processing.
+    
+    For each symbol:
+    1. Check if already exists in database
+    2. If not, validate with Yahoo Finance
+    3. If valid, register in database
+    4. If invalid, raise SymbolNotFoundError
+    
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session
+    symbols : List[str] 
+        List of normalized symbols to check/register
+        
+    Raises
+    ------
+    SymbolNotFoundError
+        If a symbol doesn't exist in Yahoo Finance
+    SymbolRegistrationError
+        If database registration fails
+    """
+    from app.api.errors import SymbolNotFoundError, SymbolRegistrationError
+
+    # Use batch registration for parallel processing
+    registration_results = await batch_register_symbols(session, symbols)
+    
+    # Check results and raise appropriate errors
+    for symbol, success in registration_results.items():
+        if not success:
+            # Check if it was a validation error or registration error
+            # Since batch_register_symbols catches exceptions, we need to re-validate
+            # to determine the exact error type
+            try:
+                # Try to register individually to get specific error
+                await auto_register_symbol(session, symbol)
+            except ValueError as e:
+                # Symbol doesn't exist in Yahoo Finance
+                logger.warning(f"Symbol validation failed: {e}")
+                raise SymbolNotFoundError(symbol, source="yfinance")
+            except RuntimeError as e:
+                # Database registration failed
+                logger.error(f"Symbol registration failed: {e}")
+                raise SymbolRegistrationError(symbol, str(e))
+            except Exception as e:
+                # Unexpected error
+                logger.error(f"Unexpected error in symbol registration for {symbol}: {e}", exc_info=True)
+                raise SymbolRegistrationError(symbol, f"Unexpected error: {str(e)}")
+        else:
+            logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
+
+
 __all__ = [
     "symbol_exists_in_db",
     "insert_symbol", 
     "auto_register_symbol",
-    "batch_register_symbols"
+    "batch_register_symbols",
+    "ensure_symbols_registered"
 ]

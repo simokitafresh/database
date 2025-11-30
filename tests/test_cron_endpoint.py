@@ -17,6 +17,9 @@ class TestCronEndpoint(unittest.IsolatedAsyncioTestCase):
 
         # Mock Session
         mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (None, None)  # Simulate no data
+        mock_session.execute.return_value = mock_result
 
         # Test Request
         request = CronDailyUpdateRequest(dry_run=False)

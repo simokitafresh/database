@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     # Profiling settings
     ENABLE_PROFILING: bool = False
 
+    # Price adjustment detection settings (TID-ADJ-001)
+    ADJUSTMENT_CHECK_ENABLED: bool = True
+    ADJUSTMENT_MIN_THRESHOLD_PCT: float = 0.001  # Minimum detection threshold (%)
+    ADJUSTMENT_SAMPLE_POINTS: int = 10  # Number of sample points to check
+    ADJUSTMENT_MIN_DATA_AGE_DAYS: int = 60  # Only check data older than this
+    ADJUSTMENT_AUTO_FIX: bool = False  # Auto-fix detected issues (False = report only)
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

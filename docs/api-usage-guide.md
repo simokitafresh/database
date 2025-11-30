@@ -452,23 +452,164 @@ Sample response:
 }
 ```
 
+### Maintenance Endpoints (Price Adjustment Detection)
+These endpoints detect and fix discrepancies between stored prices and Yahoo Finance's adjusted prices caused by corporate actions (splits, dividends).
+
+#### POST `/v1/maintenance/check-adjustments`
+Scans symbols for price adjustments that need correction.
+
+Request body:
+- `symbols` (list[str], optional): specific symbols to check (defaults to all active)
+- `threshold_pct` (float, optional, default from settings): minimum % diff to flag
+- `sample_points` (int, optional, 2-50): number of date samples per symbol
+
+Sample request:
+```bash
+curl -X POST "http://localhost:8000/v1/maintenance/check-adjustments" \
+  -H "Content-Type: application/json" \
+  -d '{"symbols": ["AAPL", "MSFT"], "threshold_pct": 1.0}'
+```
+
+Sample response:
+```json
+{
+  "status": "success",
+  "message": "Adjustment check completed",
+  "scanned": 2,
+  "needs_refresh_count": 1,
+  "no_change_count": 1,
+  "affected_symbols": ["AAPL"],
+  "summary": {
+    "by_type": {"stock_split": 1},
+    "by_severity": {"critical": 1}
+  }
+}
+```
+
+#### GET `/v1/maintenance/adjustment-report`
+Returns detailed results from the last scan.
+
+Query parameters:
+- `symbol` (string, optional): filter to one symbol
+
+Sample request:
+```bash
+curl "http://localhost:8000/v1/maintenance/adjustment-report?symbol=AAPL"
+```
+
+Sample response:
+```json
+{
+  "last_scan_timestamp": "2024-09-15T10:30:00Z",
+  "results": [
+    {
+      "symbol": "AAPL",
+      "needs_refresh": true,
+      "max_pct_diff": 50.2,
+      "events": [
+        {
+          "date": "2020-08-31",
+          "db_price": 500.28,
+          "yf_price": 125.07,
+          "pct_diff": 300.0,
+          "adjustment_type": "stock_split",
+          "severity": "critical"
+        }
+      ],
+      "scan_timestamp": "2024-09-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### POST `/v1/maintenance/fix-adjustments`
+Deletes affected price data and creates re-fetch jobs.
+
+Request body:
+- `symbols` (list[str], optional): symbols to fix (defaults to all flagged)
+- `confirm` (bool, required): must be `true` to execute
+
+Sample request:
+```bash
+curl -X POST "http://localhost:8000/v1/maintenance/fix-adjustments" \
+  -H "Content-Type: application/json" \
+  -d '{"symbols": ["AAPL"], "confirm": true}'
+```
+
+Sample response:
+```json
+{
+  "status": "success",
+  "message": "Fixed 1 symbols",
+  "fixed_count": 1,
+  "fix_results": [
+    {
+      "symbol": "AAPL",
+      "deleted_rows": 11023,
+      "job_id": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  ],
+  "timestamp": "2024-09-15T10:35:00Z"
+}
+```
+
+#### POST `/v1/adjustment-check` (Cron)
+Authenticated endpoint for scheduled adjustment checks.
+
+Headers:
+- `X-Cron-Secret`: required
+
+Query parameters:
+- `symbols` (string, optional): comma-separated symbols
+- `auto_fix` (bool, optional): auto-apply fixes when true
+
+Sample request:
+```bash
+curl -X POST "http://localhost:8000/v1/adjustment-check?auto_fix=true" \
+  -H "X-Cron-Secret: your-secret-token"
+```
+
+Sample response:
+```json
+{
+  "status": "success",
+  "message": "Adjustment check completed",
+  "scanned": 150,
+  "needs_refresh_count": 3,
+  "affected_symbols": ["AAPL", "TSLA", "NVDA"],
+  "fixed_count": 3,
+  "fixed_symbols": ["AAPL", "TSLA", "NVDA"],
+  "duration_seconds": 45.2
+}
+```
+
+**Error Responses:**
+- `ADJUSTMENT_CHECK_DISABLED` (200, skipped): feature disabled via settings
+- `ADJUSTMENT_CHECK_FAILED` (500): internal error during scan
+- `AUTO_FIX_DISABLED` (400): `auto_fix=true` but `ADJUSTMENT_AUTO_FIX=false`
+- `CONFIRMATION_REQUIRED` (400): `confirm` not true for fix endpoint
+
 ## Common Workflows
 1. **Serve end-user charts**: call `GET /v1/prices` with `auto_fetch=true`. Cache results and monitor coverage via `GET /v1/coverage` for anomalies.
 2. **Backfill history**: create a fetch job with `POST /v1/fetch`, poll `/v1/fetch/{job_id}`, and reconcile results. Retry failed symbols via a follow-up job or manual `GET /v1/prices`.
 3. **Daily operations**: run `/v1/daily-update` from a scheduler using the cron secret, then inspect `/v1/status` to confirm success.
 4. **Economic data updates**: run `/v1/daily-economic-update` for FRED Treasury Bill rate data updates.
 5. **Debug and monitor**: use `/v1/prices/count/{symbol}` to check data persistence, `/v1/performance/report` for profiling, and `/v1/debug/cache-stats` for cache inspection (dev/staging only).
+6. **Price adjustment maintenance**: periodically run `/v1/maintenance/check-adjustments` or `/v1/adjustment-check` (cron) to detect split/dividend adjustments; review with `/v1/maintenance/adjustment-report`; fix via `/v1/maintenance/fix-adjustments`.
 
 ## Helpful Source Files
 - `app/api/v1/prices.py` - Price data retrieval and deletion
 - `app/api/v1/coverage.py` - Coverage analytics and export
 - `app/api/v1/fetch.py` - Fetch job management
 - `app/api/v1/cron.py` - Scheduled maintenance endpoints
+- `app/api/v1/maintenance.py` - Price adjustment detection and fixing
 - `app/api/v1/symbols.py` - Symbol directory
 - `app/api/v1/health.py` - Health check endpoints
 - `app/api/v1/debug.py` - Debug endpoints (cache stats)
 - `app/api/v1/economic.py` - Economic indicators API (DTB3)
+- `app/services/adjustment_detector.py` - Adjustment detection service
 - `app/services/fred_service.py` - FRED API integration
+- `app/schemas/maintenance.py` - Adjustment check/fix schemas
 - `app/schemas/economic.py` - Economic data schemas
 - Schemas in `app/schemas/`
 

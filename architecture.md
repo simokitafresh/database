@@ -182,11 +182,25 @@ class Settings(BaseSettings):
     REQUEST_TIMEOUT_SECONDS: int = 15
     CORS_ALLOW_ORIGINS: str = ""  # comma-separated
     LOG_LEVEL: str = "INFO"
+    
+    # 価格調整検出設定
+    ADJUSTMENT_CHECK_ENABLED: bool = True      # 調整検出機能の有効化
+    ADJUSTMENT_MIN_THRESHOLD_PCT: float = 1.0  # 検出閾値（%）
+    ADJUSTMENT_SAMPLE_POINTS: int = 10         # サンプリングポイント数
+    ADJUSTMENT_MIN_DATA_AGE_DAYS: int = 60     # 対象データの最小経過日数
+    ADJUSTMENT_AUTO_FIX: bool = False          # 自動修正の有効化
 
     class Config:
         env_file = ".env"
 
 settings = Settings()
+
+**価格調整検出設定の詳細:**
+- `ADJUSTMENT_CHECK_ENABLED`: 調整検出機能全体のオン/オフ（False時は全API無効）
+- `ADJUSTMENT_MIN_THRESHOLD_PCT`: DB価格とyfinance価格の乖離がこの%を超えると要調整と判定
+- `ADJUSTMENT_SAMPLE_POINTS`: 各シンボルでチェックする日付サンプル数（最大）
+- `ADJUSTMENT_MIN_DATA_AGE_DAYS`: この日数より新しいデータは調整対象外（分割情報確定待ち）
+- `ADJUSTMENT_AUTO_FIX`: TrueでPOST check-adjustments時に自動で修正ジョブ作成
 
 3.2 app/db/models.py（スキーマ定義・要点）
 
@@ -242,6 +256,32 @@ fetch_jobsテーブルとの CRUD 操作。
 ジョブステータス管理（pending → running → completed/failed/cancelled）。
 
 プログレス追跡とエラーハンドリング。
+
+
+3.8 app/services/adjustment_detector.py（新規：価格調整検出）
+
+**概要:** DB内の価格データとyfinance調整済み価格を比較し、分割・配当等による乖離を自動検出・修正するサービス。
+
+**主要クラス・関数:**
+- `PrecisionAdjustmentDetector`: メインサービスクラス
+- `AdjustmentType`: 調整タイプ列挙（stock_split, reverse_split, dividend, special_dividend, spinoff, capital_gain, unknown）
+- `AdjustmentSeverity`: 重要度（info, warning, critical）
+- `DetectionThresholds`: 検出閾値設定
+- `AdjustmentEvent`: 検出イベント（日付、乖離率、タイプ、重要度）
+- `ScanResult`: スキャン結果（シンボル、要修正フラグ、イベントリスト）
+
+**メソッド:**
+- `detect_adjustments(session, symbol)`: 単一シンボルの調整検出
+- `scan_all_symbols(session, symbols?, auto_fix?)`: 全/指定シンボルスキャン
+- `auto_fix_symbol(session, symbol)`: 自動修正（価格削除＋再取得ジョブ作成）
+- `get_sample_prices(session, symbol)`: サンプリングポイント取得
+
+**検出フロー:**
+1. DBから等間隔サンプルポイント取得（最大10点、60日以上経過データ）
+2. yfinanceから同日付の調整済み価格取得
+3. 各ポイントで乖離率計算（閾値1%超で要修正判定）
+4. 乖離パターンから調整タイプ推定（2倍→分割、0.5倍→逆分割、数%→配当等）
+5. 要修正時、既存価格を削除しfetch_jobを作成して再取得
 
 
 3.8 app/services/job_worker.py（新規：ジョブ実行エンジン）
@@ -328,13 +368,33 @@ DELETE /v1/prices/{symbol}：特定シンボルの価格データを削除
 
 **POST /v1/fetch/{job_id}/cancel**：ジョブキャンセル
 
+**Maintenance API（価格調整検出・修正）**
+
+**POST /v1/maintenance/check-adjustments**：価格調整チェック
+- ボディ：{symbols?: [string], threshold_pct?: float, sample_points?: int}
+- 返却：{status, message, scanned, needs_refresh_count, no_change_count, affected_symbols, summary}
+- DB内価格とyfinance調整済み価格を比較し、分割・配当等による乖離を検出
+
+**GET /v1/maintenance/adjustment-report**：調整レポート取得
+- パラメータ：symbol（フィルタ）
+- 返却：{last_scan_timestamp, results: [{symbol, needs_refresh, max_pct_diff, events, ...}]}
+
+**POST /v1/maintenance/fix-adjustments**：調整修正実行
+- ボディ：{symbols?: [string], confirm: true}
+- 返却：{status, message, fixed_count, fix_results: [{symbol, deleted_rows, job_id}]}
+- 乖離を検出したシンボルの既存価格を削除し、再取得ジョブを作成
+
+**POST /v1/adjustment-check**：Cron用調整チェック（認証必要）
+- ヘッダ：X-Cron-Secret
+- パラメータ：symbols?, auto_fix?
+- 返却：{status, message, scanned, needs_refresh_count, affected_symbols, ...}
 
 
 4.2 エラーモデル（共通）
 
 { "error": { "code": "SYMBOL_NOT_FOUND", "message": "META not found" } }
 
-代表コード：SYMBOL_NOT_FOUND, NO_DATA_IN_RANGE, TOO_MUCH_DATA, UPSTREAM_RATE_LIMITED, VALIDATION_ERROR
+代表コード：SYMBOL_NOT_FOUND, NO_DATA_IN_RANGE, TOO_MUCH_DATA, UPSTREAM_RATE_LIMITED, VALIDATION_ERROR, ADJUSTMENT_CHECK_DISABLED
 
 
 

@@ -16,6 +16,14 @@ class CronDailyUpdateRequest(BaseModel):
         None, description="Start date (YYYY-MM-DD), defaults to CRON_UPDATE_DAYS ago"
     )
     date_to: Optional[str] = Field(None, description="End date (YYYY-MM-DD), defaults to yesterday")
+    check_adjustments: bool = Field(
+        default=False,
+        description="If True, run adjustment check after data update"
+    )
+    auto_fix_adjustments: bool = Field(
+        default=False,
+        description="If True and check_adjustments=True, auto-fix detected adjustments"
+    )
 
     @validator("date_from", "date_to", pre=True)
     def validate_date_format(cls, v):
@@ -46,6 +54,9 @@ class CronDailyUpdateResponse(BaseModel):
         None, description="List of symbols that failed to update"
     )
     success_count: Optional[int] = Field(None, description="Number of successfully updated symbols")
+    adjustment_check: Optional[Dict] = Field(
+        None, description="Results of adjustment check if performed"
+    )
 
 
 class CronStatusResponse(BaseModel):

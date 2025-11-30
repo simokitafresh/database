@@ -7,6 +7,7 @@ Yahoo Finance 由来の調整済み株価（OHLCV）をPostgreSQLへ保存し、
 - **基本API**: `/healthz`, `/v1/symbols`, `/v1/prices` - 株価データ取得・管理
 - **カバレッジ管理**: `/v1/coverage`, `/v1/coverage/export` - データカバレッジ監視・CSV出力
 - **ジョブ管理**: `/v1/fetch` - 非同期データ取得・バックグラウンド処理
+- **メンテナンス**: `/v1/maintenance/*`, `/v1/adjustment-check` - 価格調整検出・自動修正
 - **パフォーマンス**: QueryOptimizer による 50-70% クエリ高速化
 - **分散処理**: Redis による分散ロック・キャッシュ（Standardプラン以上）
 - **実装完成度**: **100%** (全32タスク完了 - 2025年9月5日)
@@ -43,6 +44,13 @@ Yahoo Finance 由来の調整済み株価（OHLCV）をPostgreSQLへ保存し、
 - **エラーハンドリング**: 詳細エラー分類・自動復旧・ユーザーフレンドリーメッセージ
 - **セキュリティ**: CORS制御・リクエスト制限・インプットバリデーション
 - **監視・ヘルスチェック**: `/healthz` による生存監視・DB接続状態確認
+
+### 🔧 価格調整検出・自動修正
+- **調整検出**: DB価格とyfinance調整済み価格を比較し、分割・配当による乖離を検出
+- **イベント分類**: 株式分割、逆分割、配当、特別配当、スピンオフを自動分類
+- **重要度判定**: 乖離率に基づきinfo/warning/criticalを判定
+- **自動修正**: 検出した乖離を自動で修正（既存データ削除＋再取得ジョブ作成）
+- **Cron連携**: `/v1/adjustment-check` で定期チェックをスケジュール可能
 
 ## 🛠️ ローカル開発セットアップ
 
@@ -484,6 +492,16 @@ YF_REQ_CONCURRENCY=4      # 並列取得数
 WEB_CONCURRENCY=2         # Gunicornワーカー数
 GUNICORN_TIMEOUT=30       # タイムアウト秒数
 PORT=8000                 # ポート番号
+```
+
+### 価格調整検出設定
+```bash
+# 調整検出機能（分割・配当による価格乖離の自動検出・修正）
+ADJUSTMENT_CHECK_ENABLED=true    # 調整検出機能の有効化
+ADJUSTMENT_MIN_THRESHOLD_PCT=1.0 # 検出閾値（%）- この%以上の乖離を検出
+ADJUSTMENT_SAMPLE_POINTS=10      # サンプリングポイント数（2-50）
+ADJUSTMENT_MIN_DATA_AGE_DAYS=60  # 対象データの最小経過日数
+ADJUSTMENT_AUTO_FIX=false        # 自動修正の有効化（trueで自動削除・再取得）
 ```
 
 ### セキュリティ・CORS

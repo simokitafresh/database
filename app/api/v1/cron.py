@@ -253,6 +253,36 @@ async def daily_update(
                 + (f" and {len(failed_symbols)-10} more" if len(failed_symbols) > 10 else "")
             )
 
+        # Run adjustment check if requested
+        adjustment_result = None
+        if request.check_adjustments and settings.ADJUSTMENT_CHECK_ENABLED:
+            logger.info("Running post-update adjustment check")
+            try:
+                from app.services.adjustment_detector import PrecisionAdjustmentDetector
+                
+                detector = PrecisionAdjustmentDetector()
+                scan_result = await detector.scan_all_symbols(
+                    session=session,
+                    symbols=None,  # Check all active symbols
+                    auto_fix=request.auto_fix_adjustments and settings.ADJUSTMENT_AUTO_FIX,
+                )
+                
+                adjustment_result = {
+                    "scanned": scan_result["scanned"],
+                    "needs_refresh_count": len(scan_result["needs_refresh"]),
+                    "errors_count": len(scan_result["errors"]),
+                    "fixed_count": len(scan_result.get("fixed", [])),
+                    "summary": scan_result["summary"],
+                }
+                
+                logger.info(
+                    f"Adjustment check: {adjustment_result['needs_refresh_count']} "
+                    f"symbols need refresh"
+                )
+            except Exception as adj_error:
+                logger.error(f"Adjustment check failed: {adj_error}")
+                adjustment_result = {"error": str(adj_error)}
+
         execution_time = (datetime.utcnow() - start_time).total_seconds()
         return CronDailyUpdateResponse(
             status=final_status,
@@ -264,6 +294,7 @@ async def daily_update(
             batch_size=batch_size,
             success_count=success_count,
             failed_symbols=failed_symbols if failed_symbols else None,
+            adjustment_check=adjustment_result,
         )
 
     except HTTPException:
@@ -456,6 +487,101 @@ async def daily_economic_update(
                 "error": {
                     "code": "INTERNAL_ERROR",
                     "message": f"Internal server error: {str(e)}",
+                }
+            },
+        )
+
+
+@router.post("/adjustment-check", response_model=dict, summary="Check for price adjustments")
+async def adjustment_check(
+    symbols: Optional[list[str]] = None,
+    auto_fix: bool = False,
+    session: AsyncSession = Depends(get_session),
+    authenticated: bool = Depends(verify_cron_token),
+) -> dict:
+    """Check for and optionally fix price adjustments.
+    
+    This endpoint scans symbols for price adjustments (splits, dividends, etc.)
+    and can automatically fix them by scheduling data re-fetches.
+    
+    Args:
+        symbols: Optional list of symbols to check. If None, checks all active symbols.
+        auto_fix: Whether to automatically fix detected adjustments.
+        session: Database session.
+        authenticated: Cron token verification.
+    
+    Returns:
+        Dictionary containing scan results and optional fix results.
+    """
+    start_time = datetime.utcnow()
+    logger.info(f"Starting adjustment check (auto_fix={auto_fix}, symbols={symbols})")
+    
+    if not settings.ADJUSTMENT_CHECK_ENABLED:
+        logger.info("Adjustment check is disabled via settings")
+        return {
+            "status": "skipped",
+            "message": "Adjustment checking is disabled",
+            "timestamp": start_time.isoformat(),
+        }
+    
+    try:
+        from app.services.adjustment_detector import PrecisionAdjustmentDetector
+        
+        detector = PrecisionAdjustmentDetector()
+        
+        # Perform scan
+        scan_result = await detector.scan_all_symbols(
+            session=session,
+            symbols=symbols,
+            auto_fix=auto_fix and settings.ADJUSTMENT_AUTO_FIX,
+        )
+        
+        end_time = datetime.utcnow()
+        duration_seconds = (end_time - start_time).total_seconds()
+        
+        # Build response
+        response = {
+            "status": "success",
+            "message": (
+                f"Scanned {scan_result['scanned']} symbols, "
+                f"{len(scan_result['needs_refresh'])} need refresh"
+            ),
+            "timestamp": start_time.isoformat(),
+            "duration_seconds": round(duration_seconds, 2),
+            "total_symbols": scan_result["total_symbols"],
+            "scanned": scan_result["scanned"],
+            "needs_refresh_count": len(scan_result["needs_refresh"]),
+            "errors_count": len(scan_result["errors"]),
+            "summary": scan_result["summary"],
+        }
+        
+        # Add fix results if auto_fix was performed
+        if auto_fix and scan_result.get("fixed"):
+            response["fixed_count"] = len(scan_result["fixed"])
+            response["fixed_symbols"] = [f["symbol"] for f in scan_result["fixed"]]
+        
+        # Add affected symbols for visibility (limited list)
+        affected = [r["symbol"] for r in scan_result["needs_refresh"][:20]]
+        if affected:
+            response["affected_symbols"] = affected
+            if len(scan_result["needs_refresh"]) > 20:
+                response["affected_symbols_truncated"] = True
+        
+        logger.info(
+            f"Adjustment check completed: {response['scanned']} scanned, "
+            f"{response['needs_refresh_count']} need refresh"
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.exception("Unexpected error in adjustment_check")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": f"Adjustment check failed: {str(e)}",
                 }
             },
         )

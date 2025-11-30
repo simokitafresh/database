@@ -21,7 +21,7 @@ class CronDailyUpdateRequest(BaseModel):
         description="If True, run adjustment check after data update"
     )
     auto_fix_adjustments: bool = Field(
-        default=False,
+        default=True,
         description="If True and check_adjustments=True, auto-fix detected adjustments"
     )
 

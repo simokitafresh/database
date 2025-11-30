@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     ADJUSTMENT_MIN_THRESHOLD_PCT: float = 0.001  # Minimum detection threshold (%)
     ADJUSTMENT_SAMPLE_POINTS: int = 10  # Number of sample points to check
     ADJUSTMENT_MIN_DATA_AGE_DAYS: int = 7  # Only check data older than this (reduced from 60 to catch recent splits)
-    ADJUSTMENT_AUTO_FIX: bool = False  # Auto-fix detected issues (False = report only)
+    ADJUSTMENT_AUTO_FIX: bool = True  # Auto-fix detected issues (False = report only)
     ADJUSTMENT_CHECK_FULL_HISTORY: bool = True  # Check entire history, not just old data
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -9,6 +9,7 @@ from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.engine import create_engine_and_sessionmaker
@@ -16,8 +17,9 @@ from app.db.engine import create_engine_and_sessionmaker
 logger = logging.getLogger(__name__)
 
 # Retry configuration for transient connection errors
-MAX_SESSION_RETRIES = 3
-RETRY_DELAY_SECONDS = 0.3
+# Increased for Supabase Pooler stability
+MAX_SESSION_RETRIES = 5
+RETRY_DELAY_SECONDS = 0.5
 
 
 @lru_cache(maxsize=8)
@@ -54,7 +56,7 @@ async def _create_session_with_retry() -> AsyncSession:
     """Create a database session with retry logic for transient connection errors.
     
     This function handles retries at the connection establishment level,
-    not during request processing.
+    and validates the connection is actually working before returning.
     """
     SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
     last_error: Exception | None = None
@@ -62,16 +64,25 @@ async def _create_session_with_retry() -> AsyncSession:
     for attempt in range(MAX_SESSION_RETRIES):
         try:
             session = SessionLocal()
-            # Test the connection by starting a transaction
-            # This ensures the connection is actually valid
+            # Validate connection by executing a simple query
+            # This catches stale connections from the Supabase Pooler
+            await session.execute(text("SELECT 1"))
             return session
         except (SQLAlchemyError, Exception) as e:
             last_error = e
+            # Clean up the failed session
+            try:
+                await session.close()
+            except Exception:
+                pass
+            
             if _is_transient_error(e) and attempt < MAX_SESSION_RETRIES - 1:
+                wait_time = RETRY_DELAY_SECONDS * (attempt + 1)
                 logger.warning(
-                    f"Transient DB connection error (attempt {attempt + 1}/{MAX_SESSION_RETRIES}): {e}"
+                    f"Transient DB connection error (attempt {attempt + 1}/{MAX_SESSION_RETRIES}), "
+                    f"retrying in {wait_time}s: {e}"
                 )
-                await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+                await asyncio.sleep(wait_time)
                 continue
             raise
     

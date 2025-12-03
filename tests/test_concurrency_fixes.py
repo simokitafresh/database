@@ -6,39 +6,60 @@ from app.services.fetch_worker import process_fetch_job
 from app.schemas.fetch_jobs import FetchJobProgress, FetchJobResult
 
 class TestConcurrencyFixes(unittest.IsolatedAsyncioTestCase):
-    async def test_batch_register_symbols_sequential(self):
-        """Verify that batch_register_symbols processes symbols sequentially."""
+    async def test_batch_register_symbols_three_phase(self):
+        """Verify that batch_register_symbols uses optimized three-phase approach."""
         mock_session = AsyncMock()
         symbols = ['SYM1', 'SYM2', 'SYM3']
         
-        # Mock auto_register_symbol to track execution order/concurrency
-        execution_log = []
+        # Mock get_existing_symbols to return empty (no existing symbols)
+        with patch('app.services.auto_register.get_existing_symbols', new_callable=AsyncMock) as mock_existing:
+            mock_existing.return_value = set()
+            
+            # Mock validate_symbol_exists_async to return True for all
+            with patch('app.services.auto_register.validate_symbol_exists_async', new_callable=AsyncMock) as mock_validate:
+                mock_validate.return_value = True
+                
+                # Mock insert_symbols_batch to return success for all
+                with patch('app.services.auto_register.insert_symbols_batch', new_callable=AsyncMock) as mock_insert:
+                    mock_insert.return_value = {sym: True for sym in symbols}
+                    
+                    result = await batch_register_symbols(mock_session, symbols)
+                    
+                    # Verify all phases were called
+                    mock_existing.assert_called_once()
+                    self.assertEqual(mock_validate.call_count, 3)  # Called for each symbol
+                    mock_insert.assert_called_once()
+                    
+                    # Verify result format: Dict[str, Tuple[bool, Optional[str]]]
+                    for sym in symbols:
+                        self.assertIn(sym, result)
+                        success, error_type = result[sym]
+                        self.assertTrue(success)
+                        self.assertIsNone(error_type)
+    
+    async def test_batch_register_skips_existing_symbols(self):
+        """Verify that existing symbols skip validation and insertion."""
+        mock_session = AsyncMock()
+        symbols = ['SYM1', 'SYM2', 'SYM3']
         
-        async def mock_register(session, symbol):
-            execution_log.append(f"start_{symbol}")
-            await asyncio.sleep(0.01) # Simulate work
-            execution_log.append(f"end_{symbol}")
-            return True
+        # Mock get_existing_symbols to return all as existing
+        with patch('app.services.auto_register.get_existing_symbols', new_callable=AsyncMock) as mock_existing:
+            mock_existing.return_value = {'SYM1', 'SYM2', 'SYM3'}
             
-        with patch('app.services.auto_register.auto_register_symbol', side_effect=mock_register) as mock_reg:
-            result = await batch_register_symbols(mock_session, symbols)
-            
-            # Verify result format changed to Dict[str, Tuple[bool, Optional[str]]]
-            for sym in symbols:
-                self.assertIn(sym, result)
-                success, error_type = result[sym]
-                self.assertTrue(success)
-                self.assertIsNone(error_type)
-            
-            # Check if execution was sequential
-            # If sequential: start_1, end_1, start_2, end_2...
-            # If concurrent: start_1, start_2, end_1... (mixed)
-            
-            self.assertEqual(len(execution_log), 6)
-            for i in range(0, 6, 2):
-                self.assertTrue(execution_log[i].startswith("start_"))
-                self.assertTrue(execution_log[i+1].startswith("end_"))
-                self.assertEqual(execution_log[i].split("_")[1], execution_log[i+1].split("_")[1])
+            with patch('app.services.auto_register.validate_symbol_exists_async', new_callable=AsyncMock) as mock_validate:
+                with patch('app.services.auto_register.insert_symbols_batch', new_callable=AsyncMock) as mock_insert:
+                    
+                    result = await batch_register_symbols(mock_session, symbols)
+                    
+                    # Verify validation and insertion were NOT called
+                    mock_validate.assert_not_called()
+                    mock_insert.assert_not_called()
+                    
+                    # All should be successful
+                    for sym in symbols:
+                        success, error_type = result[sym]
+                        self.assertTrue(success)
+                        self.assertIsNone(error_type)
 
     async def test_fetch_worker_locking(self):
         """Verify that process_fetch_job uses a lock for progress updates."""

@@ -28,6 +28,29 @@ This guide distills the FastAPI surface of the stock data management system so a
 - General API consumers do not need authentication.
 - Cron maintenance endpoints (`/v1/daily-update`, `/v1/daily-economic-update`, `/v1/status`) require the header `X-Cron-Secret: <token>`. The expected token is configured in `settings.CRON_SECRET_TOKEN`.
 
+## Rate Limiting and Throttling
+
+### External API Rate Limits (Yahoo Finance)
+When `auto_fetch=true`, requests may trigger Yahoo Finance API calls. These are rate-limited:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `YF_RATE_LIMIT_REQUESTS_PER_SECOND` | 2.0 | Token bucket rate |
+| `YF_RATE_LIMIT_BURST_SIZE` | 10 | Maximum burst capacity |
+| `YF_RATE_LIMIT_MAX_BACKOFF_DELAY` | 60s | Maximum retry delay |
+
+### DB-Only Access (`auto_fetch=false`)
+When `auto_fetch=false`, **no external API rate limits apply**. However, consider:
+- **Connection pool limits**: Supabase Standard Plan has concurrent connection limits
+- **Server resources**: Large concurrent requests may strain memory/CPU
+- **Recommendation**: Limit parallel requests to **5-10 concurrent** for optimal performance
+
+### Queueing Behavior
+Fetch jobs (`POST /v1/fetch`) are queued and processed asynchronously:
+- Maximum concurrent jobs: `FETCH_MAX_CONCURRENT_JOBS` (default: 10)
+- Worker concurrency: `FETCH_WORKER_CONCURRENCY` (default: 2)
+- Jobs exceeding limits are queued with `pending` status
+
 ## Pagination Patterns
 - `GET /v1/coverage` exposes `page` and `page_size` with a `pagination` object in the response.
 - `GET /v1/fetch` uses cursor-like `limit` and `offset` and returns a `total` field.
@@ -83,6 +106,15 @@ Behavior highlights:
 - **Bulk Fetching**: Set `auto_fetch=false` to enable bulk read mode.
   - `auto_fetch=true`: Max 10 symbols, 50,000 rows (External API limit)
   - `auto_fetch=false`: Max 100 symbols, 200,000 rows (DB-only limit)
+
+**Important**: `GET /v1/prices` does **not** support pagination. For data exceeding 200,000 rows, use date range splitting:
+```python
+# Example: Fetching 100 symbols × 20 years (split by year)
+for year in range(2005, 2025):
+    response = requests.get(
+        f"/v1/prices?symbols={symbols}&from={year}-01-01&to={year}-12-31&auto_fetch=false"
+    )
+```
 
 Sample request:
 ```
@@ -596,6 +628,126 @@ Sample response:
 - `ADJUSTMENT_CHECK_FAILED` (500): internal error during scan
 - `AUTO_FIX_DISABLED` (400): `auto_fix=true` but `ADJUSTMENT_AUTO_FIX=false`
 - `CONFIRMATION_REQUIRED` (400): `confirm` not true for fix endpoint
+
+## Database Architecture
+
+### Indexing Strategy
+The `prices` table uses a **composite primary key** on `(symbol, date)`, which automatically creates a B-tree index. This optimizes:
+- Range queries: `WHERE symbol = 'AAPL' AND date BETWEEN '2024-01-01' AND '2024-12-31'`
+- Multi-symbol queries: `WHERE symbol = ANY(ARRAY['AAPL', 'MSFT', ...]) AND date BETWEEN ...`
+
+### Connection Pooling
+SQLAlchemy async connection pooling is configured:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `DB_POOL_SIZE` | 5 | Base connections in pool |
+| `DB_MAX_OVERFLOW` | 5 | Additional connections allowed |
+| `DB_POOL_PRE_PING` | True | Health check before use |
+| `DB_POOL_RECYCLE` | 900s | Connection lifetime |
+
+When using Supabase Pooler (PgBouncer), the system automatically switches to `NullPool` mode.
+
+### Query Execution
+Multi-symbol queries use PostgreSQL's `ANY` operator for efficient batch retrieval:
+```sql
+SELECT * FROM prices
+WHERE symbol = ANY(:symbols)
+  AND date BETWEEN :date_from AND :date_to
+ORDER BY symbol, date
+```
+
+### Caching
+Redis-backed caching with in-memory fallback:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `CACHE_TTL_SECONDS` | 3600 | Cache lifetime (1 hour) |
+| `ENABLE_CACHE` | true | Enable/disable caching |
+
+Cache keys:
+- Individual: `prices:{symbol}:{date_from}:{date_to}`
+- Batch: `prices:batch:{sorted_symbols}:{date_from}:{date_to}`
+
+## ETL Integration Guide
+
+### Recommended Data Flow
+For ETL/batch processing systems, use this workflow:
+
+```
+┌─────────────────────┐
+│ 1. POST /v1/fetch   │  Create async job for data ingestion
+│    (symbols, dates) │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ 2. GET /v1/fetch/   │  Poll until status="completed"
+│    {job_id}         │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ 3. GET /v1/prices   │  Retrieve data from DB
+│    auto_fetch=false │  (no external API calls)
+└─────────────────────┘
+```
+
+### Use Case Matrix
+
+| Use Case | Endpoint | Parameters | Symbol Limit | Row Limit |
+|----------|----------|------------|--------------|----------|
+| Real-time display | `GET /v1/prices` | `auto_fetch=true` (default) | 10 | 50,000 |
+| Batch calculation | `GET /v1/prices` | `auto_fetch=false` | 100 | 200,000 |
+| Historical backfill | `POST /v1/fetch` | - | 100 | - |
+| Gap detection | `GET /v1/coverage` | - | - | - |
+
+### Handling Large Datasets (>200,000 rows)
+Since `GET /v1/prices` lacks pagination, split requests by:
+
+1. **Date range** (recommended): Fetch year-by-year or quarter-by-quarter
+2. **Symbol batches**: Split into 50-symbol chunks
+
+Example for 100 symbols × 20 years:
+```python
+import requests
+
+symbols = "AAPL,MSFT,..."  # 100 symbols
+all_data = []
+
+# Split by year to stay under 200,000 row limit
+for year in range(2005, 2025):
+    response = requests.get(
+        "https://api.example.com/v1/prices",
+        params={
+            "symbols": symbols,
+            "from": f"{year}-01-01",
+            "to": f"{year}-12-31",
+            "auto_fetch": "false"
+        }
+    )
+    all_data.extend(response.json())
+```
+
+### Fetch Job Data Flow
+**Important**: Fetch job responses contain only status metadata, not price data.
+
+```json
+// GET /v1/fetch/{job_id} returns:
+{
+  "job_id": "...",
+  "status": "completed",
+  "results": [
+    {"symbol": "AAPL", "status": "success", "rows_fetched": 252}
+  ]
+  // Note: Actual price data is NOT included here
+}
+```
+
+To retrieve the actual data after job completion:
+```bash
+curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31&auto_fetch=false"
+```
 
 ## Common Workflows
 1. **Serve end-user charts**: call `GET /v1/prices` with `auto_fetch=true`. Cache results and monitor coverage via `GET /v1/coverage` for anomalies.

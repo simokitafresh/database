@@ -23,8 +23,10 @@ class Settings(BaseSettings):
     
     # API settings
     API_MAX_SYMBOLS: int = 10
+    API_MAX_SYMBOLS_LOCAL: int = 100  # DB読み出し専用（新設）
     # Standard plan（1GB RAM）を考慮した上限値
     API_MAX_ROWS: int = 50000
+    API_MAX_ROWS_LOCAL: int = 200000  # DB読み出し専用（新設）
     YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
     YF_REQ_CONCURRENCY: int = 8  # 2から変更
     # Rate limiting settings for Yahoo Finance API

@@ -174,8 +174,10 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     APP_ENV: str = "dev"
     DATABASE_URL: str
-    API_MAX_SYMBOLS: int = 50
-    API_MAX_ROWS: int = 1_000_000
+    API_MAX_SYMBOLS: int = 10
+    API_MAX_SYMBOLS_LOCAL: int = 100
+    API_MAX_ROWS: int = 50000
+    API_MAX_ROWS_LOCAL: int = 200000
     YF_REFETCH_DAYS: int = 30
     YF_REQ_CONCURRENCY: int = 4
     FETCH_TIMEOUT_SECONDS: int = 8
@@ -303,6 +305,7 @@ CTEベースのSQL最適化により50-70%のパフォーマンス向上。
 3.10 app/api/v1/prices.py（価格データ管理）
 
 バリデーション（symbols 件数、from<=to、結果行上限）。
+auto_fetch=false 指定時は、DB読み出し専用モードとして制限を緩和（100銘柄・200,000行）。
 
 先にDBを読むのではなく、**解決区間ベースで「不足検出→取得→UPSERT→確定SELECT」**の順。
 

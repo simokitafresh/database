@@ -19,7 +19,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _parse_and_validate_symbols(symbols_raw: str) -> List[str]:
+def _parse_and_validate_symbols(symbols_raw: str, auto_fetch: bool = True) -> List[str]:
     """
     - Parse comma-separated string
     - Normalize
@@ -38,8 +38,15 @@ def _parse_and_validate_symbols(symbols_raw: str) -> List[str]:
         if s not in seen:
             uniq.append(s)
             seen.add(s)
-    if len(uniq) > settings.API_MAX_SYMBOLS:
-        raise HTTPException(status_code=422, detail="too many symbols requested")
+            
+    # Check limit based on auto_fetch setting
+    max_symbols = settings.API_MAX_SYMBOLS if auto_fetch else settings.API_MAX_SYMBOLS_LOCAL
+    
+    if len(uniq) > max_symbols:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"too many symbols requested (max: {max_symbols})"
+        )
     return uniq
 
 
@@ -63,7 +70,7 @@ async def get_prices(
     if date_to_parsed < date_from_parsed:
         raise HTTPException(status_code=422, detail="invalid date range")
     
-    symbols_list = _parse_and_validate_symbols(symbols)
+    symbols_list = _parse_and_validate_symbols(symbols, auto_fetch=auto_fetch)
     if not symbols_list:
         return []
 
@@ -82,8 +89,10 @@ async def get_prices(
         logger.error(f"Error fetching prices: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    if len(rows) > settings.API_MAX_ROWS:
-        raise HTTPException(status_code=413, detail="response too large")
+    max_rows = settings.API_MAX_ROWS if auto_fetch else settings.API_MAX_ROWS_LOCAL
+    
+    if len(rows) > max_rows:
+        raise HTTPException(status_code=413, detail=f"response too large (max: {max_rows} rows)")
         
     dt_ms = int((time.perf_counter() - t0) * 1000)
     

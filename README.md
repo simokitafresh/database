@@ -147,6 +147,10 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL,MSFT&from=2024-01-01&to=2024-
 
 # 特定シンボルのデータ削除
 curl -X DELETE "http://localhost:8000/v1/prices/AAPL"
+
+# バルクデータ取得（DBのみ・高速）
+# auto_fetch=false を指定することで、最大100銘柄・200,000行まで一括取得可能
+curl "http://localhost:8000/v1/prices?symbols=AAPL,MSFT,...&from=2020-01-01&to=2024-12-31&auto_fetch=false"
 ```
 
 ### 🎯 シンボル管理
@@ -478,8 +482,11 @@ DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
 ALEMBIC_DATABASE_URL=postgresql+psycopg://user:password@host:5432/database  # 未設定時はDATABASE_URLを自動変換
 
 # API制限設定  
-API_MAX_SYMBOLS=50        # 1リクエストの最大シンボル数
-API_MAX_ROWS=50000      # レスポンス最大行数
+# API制限設定  
+API_MAX_SYMBOLS=10        # 1リクエストの最大シンボル数（外部API呼び出し時）
+API_MAX_SYMBOLS_LOCAL=100 # DB読み出し専用の最大シンボル数
+API_MAX_ROWS=50000        # レスポンス最大行数（外部API呼び出し時）
+API_MAX_ROWS_LOCAL=200000 # DB読み出し専用の最大行数
 ```
 
 ### パフォーマンス調整

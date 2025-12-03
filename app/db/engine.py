@@ -77,13 +77,26 @@ def create_engine_and_sessionmaker(
         
         if ssl_required:
             connect_args.setdefault("ssl", True)
+        
+        # TCP Keepalive settings to prevent connection drops
+        connect_args.update({
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        })
 
         # Use NullPool for cloud deployment with connection poolers
         if "supabase.com" in database_url or "pgbouncer" in database_url.lower() or pool_size <= 1:
             poolclass = NullPool
+            # NullPoolではpre_pingやrecycleは意味がなく、オーバーヘッドになるため無効化
+            pool_pre_ping = False
+            pool_recycle = -1
 
         if "pooler.supabase.com" in database_url:
             poolclass = NullPool
+            pool_pre_ping = False
+            pool_recycle = -1
             logger.info("Using NullPool for Supabase Pooler mode")
         
     elif database_url.startswith("postgresql+psycopg://"):
@@ -116,6 +129,10 @@ def create_engine_and_sessionmaker(
     
     # Add pool settings only for databases that support them
     if not database_url.startswith("sqlite"):
+        # NullPoolの場合はpre_pingを無効化（上で設定済みだが念のため確認）
+        if poolclass == NullPool:
+            pool_pre_ping = False
+            
         engine_kwargs.update({
             "pool_pre_ping": pool_pre_ping,
             "pool_recycle": pool_recycle,

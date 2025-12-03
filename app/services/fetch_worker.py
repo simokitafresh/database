@@ -6,15 +6,21 @@ from datetime import date, datetime
 from typing import Any, Dict, List
 
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
+from decimal import Decimal
 
 from app.core.config import settings
 from app.db.engine import create_engine_and_sessionmaker
 from app.schemas.fetch_jobs import FetchJobProgress, FetchJobResult
+from app.schemas.events import CorporateEventCreate, EventTypeEnum
 from app.services.fetch_jobs import (
     save_job_results,
     update_job_progress,
     update_job_status,
 )
+from app.services.fetcher import fetch_prices_and_events
+from app.services.upsert import upsert_prices, df_to_rows
+from app.services.event_service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -188,14 +194,12 @@ async def fetch_symbol_data(
         FetchJobResult with fetch status and row count
     """
     try:
-        from app.services.fetcher import fetch_prices
-        from app.services.upsert import upsert_prices, df_to_rows
-
         # Fetch data using the robust fetcher service
         logger.info(f"Downloading {symbol} from {date_from} to {date_to}")
         
-        # fetch_prices expects settings to be passed
-        df = fetch_prices(
+        # Run synchronous fetch in thread pool to avoid blocking event loop
+        df, events = await run_in_threadpool(
+            fetch_prices_and_events,
             symbol=symbol,
             start=date_from,
             end=date_to,
@@ -204,11 +208,70 @@ async def fetch_symbol_data(
 
         if df is None or df.empty:
             logger.warning(f"No data returned for {symbol}")
-            return FetchJobResult(
+            # Even if no price data, we might have events? 
+            # Usually yfinance returns empty df if no data, but events might be separate.
+            # But fetch_prices_and_events implementation returns empty df and empty events if fetch fails.
+            if not events:
+                return FetchJobResult(
+                    symbol=symbol,
+                    status="no_data",
+                    rows_fetched=0,
+                    error="No data available for the specified date range",
+                )
+
+        # Record events if any
+        if events:
+            # Create a separate session for events to ensure they are committed
+            # regardless of price upsert success/failure, or to keep transactions separate.
+            _, SessionLocalEvents = create_engine_and_sessionmaker(
+                database_url=settings.DATABASE_URL,
+                pool_size=1,
+                max_overflow=0,
+                pool_pre_ping=settings.DB_POOL_PRE_PING,
+                pool_recycle=settings.DB_POOL_RECYCLE,
+                echo=False,
+            )
+            
+            async with SessionLocalEvents() as event_session:
+                try:
+                    event_count = 0
+                    for event_dict in events:
+                        # Map string type to Enum
+                        event_type_str = event_dict.get("type")
+                        if event_type_str == "stock_split":
+                            event_type = EventTypeEnum.STOCK_SPLIT
+                        elif event_type_str == "reverse_split":
+                            event_type = EventTypeEnum.REVERSE_SPLIT
+                        elif event_type_str == "dividend":
+                            event_type = EventTypeEnum.DIVIDEND
+                        elif event_type_str == "special_dividend":
+                            event_type = EventTypeEnum.SPECIAL_DIVIDEND
+                        else:
+                            event_type = EventTypeEnum.UNKNOWN
+
+                        event_data = CorporateEventCreate(
+                            symbol=event_dict["symbol"],
+                            event_date=event_dict["date"],
+                            event_type=event_type,
+                            ratio=Decimal(str(event_dict["ratio"])) if "ratio" in event_dict else None,
+                            amount=Decimal(str(event_dict["amount"])) if "amount" in event_dict else None,
+                            detection_method="daily_fetch",
+                            source_data={"source": "yfinance", "job_type": "daily_fetch"}
+                        )
+                        await record_event(event_session, event_data)
+                        event_count += 1
+                    
+                    logger.info(f"Recorded {event_count} events for {symbol}")
+                except Exception as e:
+                    logger.error(f"Failed to record events for {symbol}: {e}")
+                    # Continue to upsert prices even if event recording fails
+
+        if df is None or df.empty:
+             return FetchJobResult(
                 symbol=symbol,
                 status="no_data",
                 rows_fetched=0,
-                error="No data available for the specified date range",
+                error="No data available (events recorded: {len(events)})" if events else "No data available",
             )
 
         # Prepare data for upsert using the helper

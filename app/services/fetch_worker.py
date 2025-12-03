@@ -262,6 +262,56 @@ async def fetch_symbol_data(
                         event_count += 1
                     
                     logger.info(f"Recorded {event_count} events for {symbol}")
+                    
+                    # Auto-fix for splits if enabled
+                    if settings.ADJUSTMENT_AUTO_FIX and events:
+                        from app.services.adjustment_fixer import AdjustmentFixer
+                        from app.db.models import CorporateEvent
+                        from sqlalchemy import select
+                        
+                        split_events = [e for e in events if e.get("type") in ("stock_split", "reverse_split")]
+                        
+                        if split_events:
+                            logger.info(f"Found {len(split_events)} split event(s) for {symbol}, triggering auto-fix")
+                            
+                            # Create separate session for fix to avoid transaction conflicts
+                            _, SessionLocalFix = create_engine_and_sessionmaker(
+                                database_url=settings.DATABASE_URL,
+                                pool_size=1,
+                                max_overflow=0,
+                                pool_pre_ping=settings.DB_POOL_PRE_PING,
+                                pool_recycle=settings.DB_POOL_RECYCLE,
+                                echo=False,
+                            )
+                            
+                            async with SessionLocalFix() as fix_session:
+                                try:
+                                    fixer = AdjustmentFixer(fix_session)
+                                    
+                                    # Find the most recent split event we just created
+                                    for split_event in split_events:
+                                        stmt = select(CorporateEvent).where(
+                                            CorporateEvent.symbol == symbol,
+                                            CorporateEvent.event_date == split_event["date"],
+                                            CorporateEvent.event_type.in_(["stock_split", "reverse_split"])
+                                        ).order_by(CorporateEvent.id.desc()).limit(1)
+                                        
+                                        result = await fix_session.execute(stmt)
+                                        event_obj = result.scalar_one_or_none()
+                                        
+                                        if event_obj:
+                                            fix_result = await fixer.auto_fix_symbol(symbol, event_obj.id)
+                                            logger.info(
+                                                f"Auto-fix for {symbol}: job_id={fix_result.get('job_id')}, "
+                                                f"deleted_rows={fix_result.get('deleted_rows')}"
+                                            )
+                                        else:
+                                            logger.warning(f"Could not find event object for {symbol} split on {split_event['date']}")
+                                    
+                                except Exception as fix_error:
+                                    logger.error(f"Auto-fix failed for {symbol}: {fix_error}", exc_info=True)
+                                    # Don't fail the entire job if auto-fix fails
+                
                 except Exception as e:
                     logger.error(f"Failed to record events for {symbol}: {e}")
                     # Continue to upsert prices even if event recording fails

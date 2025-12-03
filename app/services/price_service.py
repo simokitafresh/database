@@ -37,6 +37,9 @@ class PriceService:
         5. Update cache
         6. Return sorted results
         """
+        # Sort symbols to prevent deadlocks during auto-registration and locking
+        symbols_list = sorted(list(set(symbols_list)))
+
         # --- auto-registration (if enabled) ---
         if settings.ENABLE_AUTO_REGISTRATION:
             logger.info(f"Checking auto-registration for symbols: {symbols_list}")

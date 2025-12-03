@@ -1,5 +1,8 @@
 ﻿# API Usage Guide for the Stock Data Platform
 
+> **Last Updated**: 2025-12-03  
+> **Environment**: Supabase (NullPool) + Render Starter + Redis-free
+
 This guide distills the FastAPI surface of the stock data management system so another LLM (or any automated agent) can interact with it safely. Cross-check design intent in `architecture.md` and live examples in `README.md` when implementing clients.
 
 ## Base URLs and Versioning
@@ -38,6 +41,7 @@ When `auto_fetch=true`, requests may trigger Yahoo Finance API calls. These are 
 | `YF_RATE_LIMIT_REQUESTS_PER_SECOND` | 2.0 | Token bucket rate |
 | `YF_RATE_LIMIT_BURST_SIZE` | 10 | Maximum burst capacity |
 | `YF_RATE_LIMIT_MAX_BACKOFF_DELAY` | 60s | Maximum retry delay |
+| `YF_REQ_CONCURRENCY` | 6 | Concurrent Yahoo Finance requests |
 
 ### DB-Only Access (`auto_fetch=false`)
 When `auto_fetch=false`, **no external API rate limits apply**. However, consider:
@@ -102,7 +106,7 @@ Query parameters:
 Behavior highlights:
 - Unknown tickers are auto-registered when `ENABLE_AUTO_REGISTRATION` is true.
 - Symbol changes are resolved transparently (one-hop) so merged histories are returned.
-- Each call re-fetches the last `settings.YF_REFETCH_DAYS` to incorporate late adjustments.
+- Each call re-fetches the last 7 days (`YF_REFETCH_DAYS`) to incorporate late adjustments.
 - **Bulk Fetching**: Set `auto_fetch=false` to enable bulk read mode.
   - `auto_fetch=true`: Max 10 symbols, 50,000 rows (External API limit)
   - `auto_fetch=false`: Max 100 symbols, 200,000 rows (DB-only limit)
@@ -694,7 +698,7 @@ SQLAlchemy async connection pooling is configured:
 | `DB_POOL_PRE_PING` | True | Health check before use |
 | `DB_POOL_RECYCLE` | 900s | Connection lifetime |
 
-When using Supabase Pooler (PgBouncer), the system automatically switches to `NullPool` mode.
+**Note**: When using Supabase Pooler (PgBouncer), the system automatically switches to `NullPool` mode, which disables connection pooling on the application side.
 
 ### Query Execution
 Multi-symbol queries use PostgreSQL's `ANY` operator for efficient batch retrieval:
@@ -710,12 +714,23 @@ Redis-backed caching with in-memory fallback:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `CACHE_TTL_SECONDS` | 3600 | Cache lifetime (1 hour) |
+| `CACHE_TTL_SECONDS` | 14400 | Cache lifetime (4 hours, optimized for daily data) |
 | `ENABLE_CACHE` | true | Enable/disable caching |
+| `max_size` | 1500 | In-memory cache max entries |
 
 Cache keys:
 - Individual: `prices:{symbol}:{date_from}:{date_to}`
 - Batch: `prices:batch:{sorted_symbols}:{date_from}:{date_to}`
+
+### Prefetch (Cache Warming)
+On application startup, frequently accessed symbols are preloaded into cache:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `PREFETCH_SYMBOLS` | `TQQQ,TECL,GLD,...` | Comma-separated list of symbols to prefetch |
+| `PREFETCH_INTERVAL_MINUTES` | 5 | Update interval (non-Supabase only) |
+
+**Supabase Environment**: Due to NullPool restrictions, prefetch runs **once at startup only** (no background periodic updates). This loads existing price data from DB into the in-memory cache without calling Yahoo Finance.
 
 ## ETL Integration Guide
 
@@ -821,8 +836,11 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
 - `app/services/adjustment_detector.py` - Adjustment detection service
 - `app/services/event_service.py` - Corporate event management service
 - `app/services/fred_service.py` - FRED API integration
+- `app/services/prefetch_service.py` - Cache warming at startup
+- `app/services/cache.py` - Redis/in-memory cache implementation
+- `app/db/queries_optimized.py` - Optimized coverage queries
 - `app/schemas/maintenance.py` - Adjustment check/fix schemas
 - `app/schemas/economic.py` - Economic data schemas
 - Schemas in `app/schemas/`
 
-Keep this guide alongside the canonical specs (`architecture.md`, `README.md`, `docs/implementation-task-list.md`) so automated agents remain aligned with production behavior.
+Keep this guide alongside the canonical specs (`architecture.md`, `README.md`, `docs/implementation-task-list.md`, `speedup.md`) so automated agents remain aligned with production behavior.

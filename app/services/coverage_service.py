@@ -464,65 +464,67 @@ async def ensure_coverage_parallel(
     on_events: Optional[callable] = None,
 ) -> None:
     """
-    複数銘柄のカバレッジを並行確認・取得する新規関数
-    既存のensure_coverage関数の並行版
+    Ensure price data coverage for multiple symbols in parallel.
+    
+    This function processes multiple symbols concurrently to speed up network fetching.
+    Database operations are serialized using a lock to prevent concurrency issues
+    with the shared AsyncSession.
     
     Parameters:
     -----------
-    session: データベースセッション
-    symbols: 銘柄リスト
-    date_from: 開始日
-    date_to: 終了日  
-    refetch_days: 再取得日数（既定30日）
+    session: Database session
+    symbols: List of symbols
+    date_from: Start date
+    date_to: End date  
+    refetch_days: Number of days to refetch for recent data
+    on_events: Optional callback for event processing
     """
+    # Lock to serialize database access on the shared session
+    session_lock = asyncio.Lock()
+    
+    # Pre-register symbols in deterministic order (sorted) to prevent deadlocks
+    # with other transactions (like auto-register) that also process symbols.
+    # We do this sequentially before launching parallel tasks.
+    sorted_symbols = sorted(list(set(symbols)))
+    for symbol in sorted_symbols:
+        # Ensure exists
+        await session.execute(
+            text(
+                "INSERT INTO symbols (symbol, is_active) VALUES (:symbol, TRUE) "
+                "ON CONFLICT (symbol) DO NOTHING"
+            ),
+            {"symbol": symbol},
+        )
+        # Acquire lock in deterministic order to prevent deadlocks during subsequent updates
+        await session.execute(
+            text("SELECT 1 FROM symbols WHERE symbol = :symbol FOR UPDATE"),
+            {"symbol": symbol},
+        )
     
     async def process_single_symbol(symbol: str):
-        """単一銘柄の処理（既存のensure_coverageのロジックを利用）"""
+        """Process coverage for a single symbol."""
         try:
-            # アドバイザリロック取得
-            # アドバイザリロック取得
+            # Use Redis lock for cross-process coordination
             from app.services.redis_utils import symbol_lock
             async with symbol_lock(symbol):
-                # No, with_symbol_lock in queries.py was:
-                # async def with_symbol_lock(...) -> None:
-                #    async with symbol_lock(symbol): pass
-                # So it was designed to be used as `await with_symbol_lock(...)`.
-                # But here I am using `async with advisory_lock(symbol)` in the original code.
-                # Wait, the original code used `await with_symbol_lock(session, symbol)` in ensure_coverage.
-                # But in ensure_coverage_parallel it used `async with advisory_lock(symbol):`.
-                # `advisory_lock` is from `app.db.utils`.
-                # I should probably use `with_symbol_lock` from `app.core.locking` which I just created.
-                # `app.core.locking.with_symbol_lock` is `async def` and returns `None`.
-                # So I should call `await with_symbol_lock(session, symbol)`.
-                # But `ensure_coverage_parallel` in original code used `async with advisory_lock(symbol):`.
-                # I should standardize.
                 
-                # Let's check `app/db/utils.py` to see what `advisory_lock` does.
-                # But I don't have access to it right now.
-                # However, `queries.py` imported `advisory_lock` from `app.db.utils`.
-                # And `ensure_coverage` used `await with_symbol_lock(session, symbol)`.
-                # `ensure_coverage_parallel` used `async with advisory_lock(symbol):`.
+                # 1. Ensure full history (DB operation)
+                async with session_lock:
+                    await _ensure_full_history_once(session, symbol)
                 
-                # In `app/core/locking.py`, I defined `with_symbol_lock` which uses `app.services.redis_utils.symbol_lock`.
-                # I should probably use that.
-                
-                await with_symbol_lock(session, symbol)
-                
-                # 一度だけフル履歴を確保
-                await _ensure_full_history_once(session, symbol)
-                
-                # カバレッジ確認
-                cov = await _get_coverage(session, symbol, date_from, date_to)
+                # 2. Check coverage (DB operation)
+                async with session_lock:
+                    cov = await _get_coverage(session, symbol, date_from, date_to)
                 
                 last_date = cov.get("last_date")
                 first_date = cov.get("first_date") 
                 has_gaps = bool(cov.get("has_weekday_gaps") or cov.get("has_gaps"))
                 first_missing_weekday = cov.get("first_missing_weekday")
                 
-                # 取得範囲の決定（既存のロジックを使用）
+                # 3. Determine fetch ranges
                 fetch_ranges = []
                 
-                # 最新データの再取得
+                # Recent data refetch
                 if last_date and date_to >= last_date:
                     days_since_last = (date_to - last_date).days
                     if days_since_last > 1:
@@ -530,14 +532,14 @@ async def ensure_coverage_parallel(
                         if refetch_start <= date_to:
                             fetch_ranges.append((refetch_start, date_to))
                 
-                # ギャップの埋め込み
+                # Gap filling
                 if has_gaps and first_missing_weekday:
                     gap_end = first_date if first_date else date_to
                     gap_start = max(date_from, first_missing_weekday)
                     if gap_start < gap_end:
                         fetch_ranges.append((gap_start, min(gap_end, date_to)))
                 
-                # 初期データ
+                # Initial data
                 if not first_date:
                     fetch_ranges.append((date_from, date_to))
                 
@@ -545,7 +547,7 @@ async def ensure_coverage_parallel(
                     logger.debug(f"No fetch needed for {symbol}")
                     return
                 
-                # 範囲をマージ
+                # Merge ranges
                 fetch_ranges.sort()
                 merged_ranges = [fetch_ranges[0]] if fetch_ranges else []
                 for start, end in fetch_ranges[1:]:
@@ -555,12 +557,14 @@ async def ensure_coverage_parallel(
                     else:
                         merged_ranges.append((start, end))
                 
-                # データ取得とUPSERT（既存の関数を利用）
+                # 4. Fetch and Upsert
                 for start, end in merged_ranges:
+                    # Network Fetch (Concurrent)
                     if on_events:
                         df, events = await fetch_prices_and_events_df(symbol, start, end)
                         if events:
-                            await on_events(events)
+                            async with session_lock:
+                                await on_events(events)
                     else:
                         df = await fetch_prices_df(symbol, start, end)
                         
@@ -571,14 +575,16 @@ async def ensure_coverage_parallel(
                     if not rows:
                         continue
                         
-                    up_sql = text(upsert_prices_sql())
-                    await session.execute(up_sql, rows)
-                    logger.debug(f"Upserted {len(rows)} rows for {symbol}")
+                    # DB Upsert (Serialized)
+                    async with session_lock:
+                        up_sql = text(upsert_prices_sql())
+                        await session.execute(up_sql, rows)
+                        logger.debug(f"Upserted {len(rows)} rows for {symbol}")
                 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
     
-    # 並行処理（最大10銘柄ずつ）
+    # Process in chunks to limit concurrency
     chunk_size = min(10, settings.YF_REQ_CONCURRENCY)
     for i in range(0, len(symbols), chunk_size):
         chunk = symbols[i:i+chunk_size]

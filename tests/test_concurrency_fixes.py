@@ -21,7 +21,14 @@ class TestConcurrencyFixes(unittest.IsolatedAsyncioTestCase):
             return True
             
         with patch('app.services.auto_register.auto_register_symbol', side_effect=mock_register) as mock_reg:
-            await batch_register_symbols(mock_session, symbols)
+            result = await batch_register_symbols(mock_session, symbols)
+            
+            # Verify result format changed to Dict[str, Tuple[bool, Optional[str]]]
+            for sym in symbols:
+                self.assertIn(sym, result)
+                success, error_type = result[sym]
+                self.assertTrue(success)
+                self.assertIsNone(error_type)
             
             # Check if execution was sequential
             # If sequential: start_1, end_1, start_2, end_2...

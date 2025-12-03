@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime, UTC
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,10 @@ from app.services.symbol_validator import validate_symbol_exists_async
 from app.services.normalize import normalize_symbol
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for transient connection errors
+MAX_DB_RETRIES = 3
+RETRY_DELAY_SECONDS = 0.5
 
 
 async def symbol_exists_in_db(session: AsyncSession, symbol: str) -> bool:
@@ -33,24 +37,36 @@ async def symbol_exists_in_db(session: AsyncSession, symbol: str) -> bool:
     bool
         True if symbol exists in database, False otherwise
     """
-    try:
-        result = await session.execute(
-            text("SELECT COUNT(*) FROM symbols WHERE symbol = :symbol"),
-            {"symbol": symbol}
-        )
-        count = result.scalar()
-        exists = count > 0
-        
-        if exists:
-            logger.debug(f"Symbol {symbol} already exists in database")
-        else:
-            logger.debug(f"Symbol {symbol} not found in database")
+    for attempt in range(MAX_DB_RETRIES):
+        try:
+            result = await session.execute(
+                text("SELECT COUNT(*) FROM symbols WHERE symbol = :symbol"),
+                {"symbol": symbol}
+            )
+            count = result.scalar()
+            exists = count > 0
             
-        return exists
-        
-    except SQLAlchemyError as e:
-        logger.error(f"Database error checking symbol existence for {symbol}: {e}")
-        raise
+            if exists:
+                logger.debug(f"Symbol {symbol} already exists in database")
+            else:
+                logger.debug(f"Symbol {symbol} not found in database")
+                
+            return exists
+            
+        except SQLAlchemyError as e:
+            error_msg = str(e)
+            is_transient = "connection was closed" in error_msg or "connection" in error_msg.lower()
+            
+            if is_transient and attempt < MAX_DB_RETRIES - 1:
+                logger.warning(f"Transient DB error checking symbol {symbol} (attempt {attempt + 1}): {e}")
+                await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+                continue
+            
+            logger.error(f"Database error checking symbol existence for {symbol}: {e}")
+            raise
+    
+    # Should not reach here, but just in case
+    raise SQLAlchemyError(f"Failed to check symbol {symbol} after {MAX_DB_RETRIES} attempts")
 
 
 async def insert_symbol(session: AsyncSession, symbol: str) -> bool:
@@ -69,42 +85,55 @@ async def insert_symbol(session: AsyncSession, symbol: str) -> bool:
     bool
         True if insertion was successful, False otherwise
     """
-    try:
-        # Insert with minimal required information
-        # name, exchange, currency will be NULL and can be updated later
-        result = await session.execute(
-            text("""
-                INSERT INTO symbols (symbol, is_active, first_date, last_date, created_at)
-                VALUES (:symbol, true, NULL, NULL, :created_at)
-                ON CONFLICT (symbol) DO NOTHING
-                RETURNING symbol
-            """),
-            {
-                "symbol": symbol,
-                "created_at": datetime.now(UTC)
-            }
-        )
-        
-        # Check if a row was actually inserted
-        inserted_symbol = result.fetchone()
-        
-        if inserted_symbol:
-            logger.info(f"Successfully inserted symbol {symbol} into database")
-            return True
-        else:
-            # Symbol already existed (ON CONFLICT DO NOTHING was triggered)
-            logger.debug(f"Symbol {symbol} already exists, insertion skipped")
-            return True  # Still consider this a success
+    for attempt in range(MAX_DB_RETRIES):
+        try:
+            # Insert with minimal required information
+            # name, exchange, currency will be NULL and can be updated later
+            result = await session.execute(
+                text("""
+                    INSERT INTO symbols (symbol, is_active, first_date, last_date, created_at)
+                    VALUES (:symbol, true, NULL, NULL, :created_at)
+                    ON CONFLICT (symbol) DO NOTHING
+                    RETURNING symbol
+                """),
+                {
+                    "symbol": symbol,
+                    "created_at": datetime.now(UTC)
+                }
+            )
             
-    except IntegrityError as e:
-        logger.error(f"Integrity error inserting symbol {symbol}: {e}")
-        return False
-    except SQLAlchemyError as e:
-        logger.error(f"Database error inserting symbol {symbol}: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Unexpected error inserting symbol {symbol}: {e}", exc_info=True)
-        return False
+            # Check if a row was actually inserted
+            inserted_symbol = result.fetchone()
+            
+            if inserted_symbol:
+                logger.info(f"Successfully inserted symbol {symbol} into database")
+                return True
+            else:
+                # Symbol already existed (ON CONFLICT DO NOTHING was triggered)
+                logger.debug(f"Symbol {symbol} already exists, insertion skipped")
+                return True  # Still consider this a success
+                
+        except IntegrityError as e:
+            logger.error(f"Integrity error inserting symbol {symbol}: {e}")
+            return False
+        except SQLAlchemyError as e:
+            error_msg = str(e)
+            is_transient = "connection was closed" in error_msg or "connection" in error_msg.lower()
+            
+            if is_transient and attempt < MAX_DB_RETRIES - 1:
+                logger.warning(f"Transient DB error inserting symbol {symbol} (attempt {attempt + 1}): {e}")
+                await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+                continue
+            
+            logger.error(f"Database error inserting symbol {symbol}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error inserting symbol {symbol}: {e}", exc_info=True)
+            return False
+    
+    # Should not reach here normally
+    logger.error(f"Failed to insert symbol {symbol} after {MAX_DB_RETRIES} attempts")
+    return False
 
 
 async def auto_register_symbol(session: AsyncSession, symbol: str) -> bool:
@@ -147,14 +176,18 @@ async def auto_register_symbol(session: AsyncSession, symbol: str) -> bool:
             return True
         
         # Step 3: Validate symbol exists in Yahoo Finance
+        # Note: This is done BEFORE any pending DB operations to avoid
+        # connection timeouts during external API calls
         logger.info(f"Validating new symbol {normalized_symbol} with Yahoo Finance")
         
-        if not await validate_symbol_exists_async(normalized_symbol):
+        yf_valid = await validate_symbol_exists_async(normalized_symbol)
+        if not yf_valid:
             error_msg = f"Symbol '{normalized_symbol}' does not exist in Yahoo Finance"
             logger.warning(error_msg)
             raise ValueError(error_msg)
         
         # Step 4: Insert symbol into database
+        # At this point, we've validated with YF so DB insert should be quick
         logger.info(f"Registering new symbol {normalized_symbol}")
         
         if not await insert_symbol(session, normalized_symbol):
@@ -168,21 +201,29 @@ async def auto_register_symbol(session: AsyncSession, symbol: str) -> bool:
     except ValueError:
         # Re-raise validation errors (symbol doesn't exist)
         raise
+    except RuntimeError:
+        # Re-raise runtime errors (DB failures)
+        raise
+    except SQLAlchemyError as e:
+        # Database connection errors
+        error_msg = f"Database error during auto-registration for symbol '{symbol}': {str(e)}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
     except Exception as e:
         error_msg = f"Auto-registration failed for symbol '{symbol}': {str(e)}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(error_msg)
         raise RuntimeError(error_msg) from e
 
 
 async def batch_register_symbols(
     session: AsyncSession, 
     symbols: List[str]
-) -> Dict[str, bool]:
+) -> Dict[str, Tuple[bool, Optional[str]]]:
     """
-    Register multiple symbols in batch with parallel processing.
+    Register multiple symbols in batch with sequential processing.
     
-    This function processes multiple symbols concurrently and returns the results
-    for each one individually.
+    This function processes multiple symbols sequentially and returns the results
+    for each one individually, including error information for failures.
     
     Parameters
     ----------
@@ -193,39 +234,42 @@ async def batch_register_symbols(
         
     Returns
     -------
-    Dict[str, bool]
-        Dictionary mapping each symbol to its registration result
-        True = successfully registered/already existed
-        False = failed to register
+    Dict[str, Tuple[bool, Optional[str]]]
+        Dictionary mapping each symbol to a tuple of:
+        - success: True if registered/already existed, False if failed
+        - error_type: 'validation' if YF validation failed, 'registration' if DB failed,
+                      None if successful
         
     Note
     ----
     This function does not raise exceptions for individual symbol failures.
     Check the return dictionary to see which symbols failed.
     """
-    async def register_one(symbol: str) -> tuple[str, bool]:
-        """Register a single symbol and return result."""
+    async def register_one(symbol: str) -> Tuple[str, bool, Optional[str]]:
+        """Register a single symbol and return result with error type."""
         try:
             result = await auto_register_symbol(session, symbol)
-            return symbol, result
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"Failed to register {symbol}: {e}")
-            return symbol, False
+            return symbol, result, None
+        except ValueError as e:
+            logger.error(f"Failed to register {symbol} (validation): {e}")
+            return symbol, False, "validation"
+        except RuntimeError as e:
+            logger.error(f"Failed to register {symbol} (registration): {e}")
+            return symbol, False, "registration"
+        except Exception as e:
+            logger.error(f"Failed to register {symbol} (unknown): {e}")
+            return symbol, False, "registration"
     
     # Process all symbols sequentially to avoid concurrent session usage
-    results = []
+    results: Dict[str, Tuple[bool, Optional[str]]] = {}
     for symbol in symbols:
-        result = await register_one(symbol)
-        results.append(result)
+        sym, success, error_type = await register_one(symbol)
+        results[sym] = (success, error_type)
     
-    # Convert to dictionary
-    result_dict = dict(results)
-    
-    success_count = sum(1 for success in result_dict.values() if success)
+    success_count = sum(1 for success, _ in results.values() if success)
     logger.info(f"Batch registration completed: {success_count}/{len(symbols)} successful")
     
-    return result_dict
-
+    return results
 
 
 async def ensure_symbols_registered(
@@ -233,7 +277,7 @@ async def ensure_symbols_registered(
     symbols: List[str]
 ) -> None:
     """
-    Ensure all symbols are registered in the database with parallel processing.
+    Ensure all symbols are registered in the database.
     
     For each symbol:
     1. Check if already exists in database
@@ -257,30 +301,25 @@ async def ensure_symbols_registered(
     """
     from app.api.errors import SymbolNotFoundError, SymbolRegistrationError
 
-    # Use batch registration for parallel processing
+    # Use batch registration - now returns error type info
     registration_results = await batch_register_symbols(session, symbols)
     
     # Check results and raise appropriate errors
-    for symbol, success in registration_results.items():
+    # We use the error_type from the first attempt to avoid re-trying with
+    # potentially invalid session state
+    for symbol, (success, error_type) in registration_results.items():
         if not success:
-            # Check if it was a validation error or registration error
-            # Since batch_register_symbols catches exceptions, we need to re-validate
-            # to determine the exact error type
-            try:
-                # Try to register individually to get specific error
-                await auto_register_symbol(session, symbol)
-            except ValueError as e:
+            if error_type == "validation":
                 # Symbol doesn't exist in Yahoo Finance
-                logger.warning(f"Symbol validation failed: {e}")
+                logger.warning(f"Symbol {symbol} not found in Yahoo Finance")
                 raise SymbolNotFoundError(symbol, source="yfinance")
-            except RuntimeError as e:
+            else:
                 # Database registration failed
-                logger.error(f"Symbol registration failed: {e}")
-                raise SymbolRegistrationError(symbol, str(e))
-            except Exception as e:
-                # Unexpected error
-                logger.error(f"Unexpected error in symbol registration for {symbol}: {e}", exc_info=True)
-                raise SymbolRegistrationError(symbol, f"Unexpected error: {str(e)}")
+                logger.error(f"Symbol {symbol} registration failed (DB error)")
+                raise SymbolRegistrationError(
+                    symbol, 
+                    f"Database registration failed for symbol '{symbol}'. Please retry."
+                )
         else:
             logger.debug(f"Symbol {symbol} is available (existing or newly registered)")
 

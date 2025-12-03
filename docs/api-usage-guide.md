@@ -74,12 +74,15 @@ Query parameters:
 | `symbols` | string | yes | Comma separated tickers, max `settings.API_MAX_SYMBOLS` |
 | `from` | date | yes | Inclusive start date |
 | `to` | date | yes | Inclusive end date (clipped to today) |
-| `auto_fetch` | bool | no (default `true`) | When true, ensures DB coverage by talking to Yahoo Finance |
+| `auto_fetch` | bool | no (default `true`) | When true, ensures DB coverage by talking to Yahoo Finance. When false, reads only from DB (allows larger limits). |
 
 Behavior highlights:
 - Unknown tickers are auto-registered when `ENABLE_AUTO_REGISTRATION` is true.
 - Symbol changes are resolved transparently (one-hop) so merged histories are returned.
 - Each call re-fetches the last `settings.YF_REFETCH_DAYS` to incorporate late adjustments.
+- **Bulk Fetching**: Set `auto_fetch=false` to enable bulk read mode.
+  - `auto_fetch=true`: Max 10 symbols, 50,000 rows (External API limit)
+  - `auto_fetch=false`: Max 100 symbols, 200,000 rows (DB-only limit)
 
 Sample request:
 ```
@@ -102,6 +105,11 @@ Sample response (trimmed):
     "source_symbol": "AAPL"
   }
 ]
+```
+
+Sample bulk request (DB-only):
+```
+curl "http://localhost:8000/v1/prices?symbols=AAPL,MSFT,...(up to 100)&from=2020-01-01&to=2024-12-31&auto_fetch=false"
 ```
 
 #### DELETE `/v1/prices/{symbol}`

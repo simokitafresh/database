@@ -536,19 +536,6 @@ DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/stockdb
 CORS_ALLOW_ORIGINS=*
 LOG_LEVEL=DEBUG
 API_MAX_SYMBOLS=10
-API_MAX_ROWS=10000
-```
-
-## 📋 関連ドキュメント・リンク
-
-### プロジェクト文書
-- **`architecture.md`**: システム全体設計・DDL・運用詳細
-- **`implementation-task-list.md`**: 全32タスクの実装進捗・完了記録
-- **`render.yaml`**: Renderデプロイ設定
-- **`.env.example`**: ローカル開発用環境変数テンプレート
-- **`.env.render.example`**: Render用環境変数サンプル
-
-### 開発資源
 - **`docker/entrypoint.sh`**: コンテナ起動スクリプト（自動マイグレーション）
 - **`docker-compose.yml`**: ローカル開発環境（PostgreSQL + API）
 - **`Makefile`**: 開発タスク自動化

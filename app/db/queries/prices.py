@@ -6,14 +6,57 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+async def _has_symbol_changes(session: AsyncSession, symbols: Sequence[str]) -> bool:
+    """Check if any symbol_changes exist for the given symbols (fast check)."""
+    res = await session.execute(
+        text("SELECT 1 FROM symbol_changes WHERE new_symbol = ANY(:symbols) LIMIT 1"),
+        {"symbols": list(symbols)}
+    )
+    return res.first() is not None
+
+
 async def get_prices_resolved(
     session: AsyncSession,
     symbols: Sequence[str],
     date_from: date,
     date_to: date,
 ) -> List[dict]:
-    """Fetch price rows via direct SQL query for multiple symbols."""
+    """Fetch price rows via direct SQL query for multiple symbols.
+    
+    Optimized: Uses simple query when no symbol_changes exist (common case).
+    """
+    
+    # Fast path: if no symbol_changes exist for these symbols, use simple query
+    has_changes = await _has_symbol_changes(session, symbols)
+    
+    if not has_changes:
+        # Simple query without UNION (much faster for common case)
+        simple_sql = text("""
+            SELECT
+                symbol,
+                date,
+                open::double precision,
+                high::double precision,
+                low::double precision,
+                close::double precision,
+                volume,
+                source,
+                last_updated,
+                NULL::text AS source_symbol
+            FROM prices
+            WHERE symbol = ANY(:symbols)
+              AND date BETWEEN :date_from AND :date_to
+            ORDER BY symbol, date
+        """)
+        res = await session.execute(simple_sql, {
+            "symbols": list(symbols),
+            "date_from": date_from,
+            "date_to": date_to
+        })
+        return [dict(m) for m in res.mappings().all()]
 
+    # Full query with UNION for symbol_changes support
     sql = text("""
         SELECT DISTINCT
             pr.symbol,

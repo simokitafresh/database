@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     API_MAX_ROWS: int = 50000
     API_MAX_ROWS_LOCAL: int = 200000  # DB読み出し専用（新設）
     YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
-    YF_REQ_CONCURRENCY: int = 8  # 2から変更
+    YF_REQ_CONCURRENCY: int = 6  # Reduced from 8 for stability (rate limit is the actual bottleneck)
     # Rate limiting settings for Yahoo Finance API
     YF_RATE_LIMIT_REQUESTS_PER_SECOND: float = 2.0  # Token bucket rate
     YF_RATE_LIMIT_BURST_SIZE: int = 10  # Token bucket capacity
@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     FETCH_JOB_CLEANUP_DAYS: int = 30
     FETCH_MAX_CONCURRENT_JOBS: int = 10
 
-    # Cache settings - increased TTL for better hit rates
-    CACHE_TTL_SECONDS: int = 3600  # Increased from 60 to 3600 (1 hour)
+    # Cache settings - optimized for daily stock data
+    CACHE_TTL_SECONDS: int = 14400  # 4 hours (daily data doesn't change frequently)
     ENABLE_CACHE: bool = True
     PREFETCH_SYMBOLS: str = "TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD"
     PREFETCH_INTERVAL_MINUTES: int = 5

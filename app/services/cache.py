@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class RedisCache:
     """Redis-based cache with fallback to in-memory cache."""
 
-    def __init__(self, ttl_seconds: int = 60, max_size: int = 1000):
+    def __init__(self, ttl_seconds: int = 14400, max_size: int = 1500):
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._fallback_cache: Dict[str, Tuple[Any, datetime]] = {}

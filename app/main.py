@@ -42,8 +42,19 @@ async def lifespan(_: FastAPI):
             except Exception as e:
                 logger.error(f"Failed to start prefetch service: {e}")
                 # エラーが起きてもアプリは起動させる
-        elif is_supabase:
-            logger.info("Prefetch service disabled for Supabase environment (NullPool)")
+        elif is_supabase and settings.ENABLE_CACHE:
+            # Supabase環境: 起動時1回だけの軽量キャッシュウォーム
+            try:
+                from app.services.prefetch_service import startup_cache_warm
+                symbols_str = settings.PREFETCH_SYMBOLS
+                if symbols_str:
+                    symbols = [s.strip() for s in symbols_str.split(",") if s.strip()]
+                    cached = await startup_cache_warm(symbols)
+                    logger.info(f"Supabase startup cache warm completed: {cached} symbols")
+                else:
+                    logger.info("Supabase environment: no PREFETCH_SYMBOLS configured")
+            except Exception as e:
+                logger.warning(f"Startup cache warm failed (non-critical): {e}")
         else:
             logger.info("Prefetch service disabled (ENABLE_CACHE=False)")
         

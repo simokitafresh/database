@@ -15,6 +15,30 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _count_weekdays(start: date, end: date) -> int:
+    """Count weekdays (Mon-Fri) between two dates inclusive.
+    
+    Pure Python calculation - no database query needed.
+    """
+    if start > end:
+        return 0
+    
+    total_days = (end - start).days + 1
+    full_weeks = total_days // 7
+    remaining_days = total_days % 7
+    
+    weekdays = full_weeks * 5
+    
+    # Count remaining days
+    current = start + timedelta(days=full_weeks * 7)
+    for _ in range(remaining_days):
+        if current.weekday() < 5:  # Mon=0 to Fri=4
+            weekdays += 1
+        current += timedelta(days=1)
+    
+    return weekdays
+
+
 async def get_coverage_optimized(
     session: AsyncSession,
     symbol: str,
@@ -25,6 +49,8 @@ async def get_coverage_optimized(
 
     This function provides the same functionality as _get_coverage but with
     improved performance by using simpler SQL queries.
+    
+    Optimization: Uses Python for weekday counting instead of generate_series.
 
     Parameters
     ----------
@@ -43,8 +69,8 @@ async def get_coverage_optimized(
         Coverage information with first_date, last_date, cnt, has_weekday_gaps, first_missing_weekday
     """
 
-    # Step 1: Get basic coverage statistics
-    basic_sql = text("""
+    # Single optimized query - no generate_series, no NOT EXISTS
+    sql = text("""
         SELECT
             MIN(date) AS first_date,
             MAX(date) AS last_date,
@@ -54,15 +80,14 @@ async def get_coverage_optimized(
           AND date BETWEEN :date_from AND :date_to
     """)
 
-    res = await session.execute(basic_sql, {
+    res = await session.execute(sql, {
         "symbol": symbol,
         "date_from": date_from,
         "date_to": date_to
     })
 
     row = res.first()
-    if not row:
-        # No data at all
+    if not row or row.cnt == 0:
         return {
             "first_date": None,
             "last_date": None,
@@ -75,50 +100,37 @@ async def get_coverage_optimized(
     last_date = row.last_date
     cnt = row.cnt
 
-    # Step 2: Check for weekday gaps using a simpler approach
-    # Count expected weekdays vs actual data points
-    gap_sql = text("""
-        WITH date_range AS (
-            SELECT
-                generate_series(:date_from, :date_to, INTERVAL '1 day')::date AS d
-        ),
-        expected_weekdays AS (
-            SELECT d
-            FROM date_range
-            WHERE EXTRACT(ISODOW FROM d) BETWEEN 1 AND 5  -- Monday to Friday
-        ),
-        actual_data AS (
-            SELECT DISTINCT date
-            FROM prices
-            WHERE symbol = :symbol
-              AND date BETWEEN :date_from AND :date_to
-        )
-        SELECT
-            (SELECT COUNT(*) FROM expected_weekdays) AS expected_count,
-            (SELECT COUNT(*) FROM actual_data) AS actual_count,
-            (
-                SELECT d
-                FROM expected_weekdays ew
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM actual_data ad WHERE ad.date = ew.d
-                )
-                ORDER BY d
-                LIMIT 1
-            ) AS first_missing
-    """)
-
-    gap_res = await session.execute(gap_sql, {
-        "symbol": symbol,
-        "date_from": date_from,
-        "date_to": date_to
-    })
-
-    gap_row = gap_res.first()
-    expected_count = gap_row.expected_count
-    actual_count = gap_row.actual_count
-    first_missing = gap_row.first_missing
-
-    has_weekday_gaps = actual_count < expected_count
+    # Calculate expected weekdays in Python (much faster than generate_series)
+    expected_count = _count_weekdays(date_from, date_to)
+    
+    # Simple gap detection: if actual < expected, there are gaps
+    # Note: This doesn't account for market holidays, but matches previous behavior
+    has_weekday_gaps = cnt < expected_count
+    
+    # For first_missing_weekday, only query if gaps exist (lazy evaluation)
+    first_missing = None
+    if has_weekday_gaps:
+        # Only fetch first missing date when needed
+        missing_sql = text("""
+            WITH actual_dates AS (
+                SELECT DISTINCT date FROM prices
+                WHERE symbol = :symbol AND date BETWEEN :date_from AND :date_to
+            )
+            SELECT d::date AS missing_date
+            FROM generate_series(:date_from, :date_to, INTERVAL '1 day') AS d
+            WHERE EXTRACT(ISODOW FROM d) BETWEEN 1 AND 5
+              AND d::date NOT IN (SELECT date FROM actual_dates)
+            ORDER BY d
+            LIMIT 1
+        """)
+        missing_res = await session.execute(missing_sql, {
+            "symbol": symbol,
+            "date_from": date_from,
+            "date_to": date_to
+        })
+        missing_row = missing_res.first()
+        if missing_row:
+            first_missing = missing_row.missing_date
 
     return {
         "first_date": first_date,

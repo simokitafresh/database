@@ -59,15 +59,15 @@ def validate_symbol_exists(symbol: str, timeout: Optional[int] = None) -> bool:
             logger.warning(f"Symbol mismatch: requested {symbol}, got {symbol_from_info}")
             return False
             
-        logger.info(f"Symbol {symbol} validated successfully")
+        logger.debug(f"Symbol {symbol} validated successfully")
         return True
         
     except (URLlibHTTPError, RequestsHTTPError) as e:
         if hasattr(e, 'code') and e.code == 404:
-            logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
+            logger.debug(f"Symbol {symbol} not found in Yahoo Finance (404)")
             return False
         elif hasattr(e, 'response') and e.response.status_code == 404:
-            logger.info(f"Symbol {symbol}: Empty or invalid info response")
+            logger.debug(f"Symbol {symbol}: Empty or invalid info response")
             return False
             
         # Yahoo Finance sometimes returns empty dict for invalid symbols
@@ -81,15 +81,15 @@ def validate_symbol_exists(symbol: str, timeout: Optional[int] = None) -> bool:
             logger.warning(f"Symbol mismatch: requested {symbol}, got {symbol_from_info}")
             return False
             
-        logger.info(f"Symbol {symbol} validated successfully")
+        logger.debug(f"Symbol {symbol} validated successfully")
         return True
         
     except (URLlibHTTPError, RequestsHTTPError) as e:
         if hasattr(e, 'code') and e.code == 404:
-            logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
+            logger.debug(f"Symbol {symbol} not found in Yahoo Finance (404)")
             return False
         elif hasattr(e, 'response') and e.response.status_code == 404:
-            logger.info(f"Symbol {symbol} not found in Yahoo Finance (404)")
+            logger.debug(f"Symbol {symbol} not found in Yahoo Finance (404)")
             return False
         else:
             logger.error(f"HTTP error validating {symbol}: {e}")
@@ -178,7 +178,7 @@ def get_symbol_info(symbol: str, timeout: Optional[int] = None) -> Dict[str, Any
         
         result["exists"] = True
         result["info"] = basic_info
-        logger.info(f"Symbol {symbol} info retrieved successfully")
+        logger.debug(f"Symbol {symbol} info retrieved successfully")
         
     except (URLlibHTTPError, RequestsHTTPError) as e:
         if (hasattr(e, 'code') and e.code == 404) or (hasattr(e, 'response') and e.response.status_code == 404):

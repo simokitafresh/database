@@ -124,7 +124,7 @@ def upsert_prices_sql() -> str:
 async def upsert_prices(
     session: AsyncSession,
     price_rows: List[Dict[str, Any]],
-    batch_size: int = 500,
+    batch_size: int = 2000,
     force_update: bool = False
 ) -> Tuple[int, int]:
     """
@@ -133,7 +133,7 @@ async def upsert_prices(
     Args:
         session: Database session
         price_rows: List of price data dictionaries
-        batch_size: Number of rows to process per batch (reduced for memory efficiency)
+        batch_size: Number of rows to process per batch (optimized for 7-column Price table)
         force_update: Whether to force update existing records
         
     Returns:

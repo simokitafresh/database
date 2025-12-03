@@ -1,9 +1,19 @@
 from typing import Any, cast
+import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+
+# Import asyncpg exceptions for better error handling
+try:
+    import asyncpg.exceptions as asyncpg_exc
+    HAS_ASYNCPG = True
+except ImportError:
+    HAS_ASYNCPG = False
+
+logger = logging.getLogger(__name__)
 
 
 # Error codes for the API
@@ -206,3 +216,41 @@ def init_error_handlers(app: FastAPI) -> None:
             return JSONResponse(payload, status_code=500)
     
     app.add_exception_handler(SQLAlchemyError, cast(Any, _sqlalchemy_error_handler))
+    
+    # Handle asyncpg connection errors directly (they may not be wrapped by SQLAlchemy)
+    if HAS_ASYNCPG:
+        async def _asyncpg_error_handler(request: Request, exc: Exception) -> JSONResponse:
+            error_msg = str(exc).lower()
+            logger.warning(f"asyncpg error: {exc}")
+            
+            is_connection_error = any(pattern in error_msg for pattern in [
+                "connection was closed",
+                "connection does not exist",
+                "connection refused",
+                "connection reset",
+                "server closed",
+                "connection lost",
+            ])
+            
+            if is_connection_error:
+                payload = {
+                    "error": {
+                        "code": DATABASE_CONNECTION_ERROR,
+                        "message": "Database connection temporarily unavailable. Please retry.",
+                        "retry_after": 5
+                    }
+                }
+                return JSONResponse(payload, status_code=503, headers={"Retry-After": "5"})
+            else:
+                payload = {
+                    "error": {
+                        "code": DATABASE_ERROR,
+                        "message": f"Database operation failed: {type(exc).__name__}"
+                    }
+                }
+                return JSONResponse(payload, status_code=500)
+        
+        # Register handlers for specific asyncpg exceptions
+        app.add_exception_handler(asyncpg_exc.ConnectionDoesNotExistError, cast(Any, _asyncpg_error_handler))
+        app.add_exception_handler(asyncpg_exc.InterfaceError, cast(Any, _asyncpg_error_handler))
+        app.add_exception_handler(asyncpg_exc.PostgresConnectionError, cast(Any, _asyncpg_error_handler))

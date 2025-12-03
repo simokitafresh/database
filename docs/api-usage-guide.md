@@ -1,6 +1,6 @@
 ﻿# API Usage Guide for the Stock Data Platform
 
-> **Last Updated**: 2025-12-03  
+> **Last Updated**: 2025-12-04  
 > **Environment**: Supabase (NullPool) + Render Starter + Redis-free
 
 This guide distills the FastAPI surface of the stock data management system so another LLM (or any automated agent) can interact with it safely. Cross-check design intent in `architecture.md` and live examples in `README.md` when implementing clients.
@@ -700,6 +700,23 @@ SQLAlchemy async connection pooling is configured:
 
 **Note**: When using Supabase Pooler (PgBouncer), the system automatically switches to `NullPool` mode, which disables connection pooling on the application side.
 
+### Connection Error Handling
+The system includes robust handling for transient connection errors common in NullPool mode:
+
+| Component | Strategy | Description |
+|-----------|----------|-------------|
+| Session Creation | Retry with backoff | Up to 3 retries for `connection was closed` errors |
+| Auto-registration | Three-phase approach | Separates DB operations from external API calls |
+| Global Handler | 503 response | Returns `DATABASE_CONNECTION_ERROR` with `Retry-After` header |
+| Price Upsert | Data validation | Skips invalid OHLC values (open/high/low/close ≤ 0) |
+
+**Three-Phase Symbol Registration**:
+1. **Phase 1 (DB)**: Batch check existing symbols
+2. **Phase 2 (External API)**: Validate missing symbols with Yahoo Finance (no DB connection held)
+3. **Phase 3 (DB)**: Batch insert validated symbols
+
+This approach prevents connection timeouts caused by slow external API calls holding DB connections open.
+
 ### Query Execution
 Multi-symbol queries use PostgreSQL's `ANY` operator for efficient batch retrieval:
 ```sql
@@ -823,6 +840,8 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
     *   **Safety Net (Manual/Cron)**: Periodically run `/v1/maintenance/check-adjustments` or `/v1/adjustment-check` (cron) to detect missed adjustments; review with `/v1/maintenance/adjustment-report`; fix via `/v1/maintenance/fix-adjustments`.
 
 ## Helpful Source Files
+
+### API Layer
 - `app/api/v1/prices.py` - Price data retrieval and deletion
 - `app/api/v1/coverage.py` - Coverage analytics and export
 - `app/api/v1/fetch.py` - Fetch job management
@@ -833,14 +852,25 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
 - `app/api/v1/health.py` - Health check endpoints
 - `app/api/v1/debug.py` - Debug endpoints (cache stats)
 - `app/api/v1/economic.py` - Economic indicators API (DTB3)
+- `app/api/deps.py` - Dependency injection (session management with retry logic)
+- `app/api/errors.py` - Global error handling (connection errors, validation)
+
+### Services
+- `app/services/auto_register.py` - Three-phase symbol auto-registration
 - `app/services/adjustment_detector.py` - Adjustment detection service
 - `app/services/event_service.py` - Corporate event management service
 - `app/services/fred_service.py` - FRED API integration
 - `app/services/prefetch_service.py` - Cache warming at startup
 - `app/services/cache.py` - Redis/in-memory cache implementation
+- `app/services/upsert.py` - Price data upsert with OHLC validation
+
+### Database
 - `app/db/queries_optimized.py` - Optimized coverage queries
+- `app/db/engine.py` - Database engine configuration (NullPool support)
+
+### Schemas
 - `app/schemas/maintenance.py` - Adjustment check/fix schemas
 - `app/schemas/economic.py` - Economic data schemas
-- Schemas in `app/schemas/`
+- Other schemas in `app/schemas/`
 
 Keep this guide alongside the canonical specs (`architecture.md`, `README.md`, `docs/implementation-task-list.md`, `speedup.md`) so automated agents remain aligned with production behavior.

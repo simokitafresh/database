@@ -2,7 +2,7 @@
 非機能要件（同期オンデマンド取得・イベント駆動調整修正・将来拡張容易・Render+Supabase・Alembic導入・1ホップのシンボル変更透過解決・直近N日リフレッチ）を織り込んでいます。
 エージェントベースの開発フロー（Planner/Coder/Tester/Reviewer）を [`AGENTS.md`](AGENTS.md) に準拠し、仕様の正本としてこの文書を優先してください。
 
-**最終更新日**: 2025年12月3日
+**最終更新日**: 2025年12月4日
 
 ---
 
@@ -115,8 +115,8 @@ repo-root/
 │  │  ├─ locking.py                # 分散ロック管理
 │  │  └─ rate_limit.py             # レート制限
 │  ├─ api/
-│  │  ├─ deps.py                   # 依存注入（DBセッション等）
-│  │  ├─ errors.py                 # 共通エラーハンドラ（422/404/429/503）
+│  │  ├─ deps.py                   # 依存注入（DBセッション、接続リトライ）
+│  │  ├─ errors.py                 # 共通エラーハンドラ（422/404/429/503、接続エラー）
 │  │  └─ v1/
 │  │     ├─ router.py              # v1 APIRouter
 │  │     ├─ symbols.py             # GET /v1/symbols
@@ -155,8 +155,8 @@ repo-root/
 │  │  ├─ prefetch_service.py       # データ事前取得
 │  │  ├─ cache.py                  # キャッシュ管理（Redis/インメモリ）
 │  │  ├─ redis_utils.py            # Redis接続ユーティリティ
-│  │  ├─ auto_register.py          # シンボル自動登録
-│  │  ├─ symbol_validator.py       # シンボル検証
+│  │  ├─ auto_register.py          # シンボル自動登録（3フェーズアプローチ）
+│  │  ├─ symbol_validator.py       # シンボル検証（Yahoo Finance）
 │  │  ├─ data_cleaner.py           # データクリーニング
 │  │  └─ profiling.py              # プロファイリング
 │  ├─ schemas/
@@ -374,6 +374,8 @@ DataFrameを**一時テーブル＋INSERT...ON CONFLICT DO UPDATE**で投入。
 速度が必要なら COPY（psycopg/asyncpg-copy等）だが、現在は executemany を使用。
 
 監査目的で source に "yfinance/<version>" を格納。
+
+**データ検証:** 無効なOHLC値（open/high/low/close ≤ 0）を含む行は自動的にスキップ。
 
 
 3.6 app/services/coverage.py & coverage_service.py（データカバレッジ管理）
@@ -1003,11 +1005,26 @@ async def handle_corporate_event(session, symbol: str, event: dict):
 
 ---
 
-付記（2025年12月3日更新）
+付記（2025年12月4日更新）
 
-本ドキュメントは2025年12月3日に最新のコードベースに基づいて更新されました。
+本ドキュメントは2025年12月4日に最新のコードベースに基づいて更新されました。
 
-**主な変更点（2025年9月版からの差分）:**
+**主な変更点（2025年12月4日版）:**
+
+1. **接続エラー対策の強化**
+   - `deps.py`: セッション作成時のリトライロジック（最大3回）
+   - `errors.py`: 接続エラー用グローバル例外ハンドラ（503 + Retry-After）
+   - `auto_register.py`: 3フェーズアプローチでDB操作と外部API呼び出しを分離
+
+2. **データ検証の強化**
+   - `upsert.py`: 無効なOHLC値（open/high/low/close ≤ 0）の自動スキップ
+
+3. **3フェーズシンボル登録**
+   - Phase 1 (DB): 既存シンボルのバッチチェック
+   - Phase 2 (External API): Yahoo Financeでのシンボル検証（DB接続を保持しない）
+   - Phase 3 (DB): 検証済みシンボルのバッチ挿入
+
+**主な変更点（2025年9月版からの差分）:****
 
 1. **イベント駆動調整修正システム**
    - `corporate_events`テーブルの追加
@@ -1048,7 +1065,16 @@ async def handle_corporate_event(session, symbol: str, event: dict):
 - Supabase対応: NullPoolを利用しPgBouncerのプールを前提とする
 - Alembic の URL 補間回避: `app/migrations/env.py` で URL 内の `%` を `%%` にエスケープ
 
-**/v1/prices のオンデマンド取得:**
+**接続エラー対策（NullPoolモード）:**
+
+| コンポーネント | 戦略 | 説明 |
+|--------------|--------|------|
+| `deps.py` | リトライ付きセッション作成 | `connection was closed`エラー時に最大3回リトライ |
+| `errors.py` | グローバル例外ハンドラ | SQLAlchemyエラーを503レスポンスに変換、`Retry-After`ヘッダ付き |
+| `auto_register.py` | 3フェーズアプローチ | DB操作と外部API呼び出しを分離し、接続タイムアウトを防止 |
+| `upsert.py` | データ検証 | 無効なOHLC値をスキップしてDB制約違反を防止 |
+
+**/v1/prices のオンデマンド取得:****
 - 1シンボル = 1トランザクションで処理
 - アドバイザリロック → カバレッジ判定 → 必要区間の取得 → UPSERT → コミット
 - yfinance は `download()` を基本とし、空/列不足時は `Ticker().history()` をフォールバック

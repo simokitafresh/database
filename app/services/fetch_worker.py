@@ -272,8 +272,6 @@ async def fetch_symbol_data(
                         split_events = [e for e in events if e.get("type") in ("stock_split", "reverse_split")]
                         
                         if split_events:
-                            logger.info(f"Found {len(split_events)} split event(s) for {symbol}, triggering auto-fix")
-                            
                             # Create separate session for fix to avoid transaction conflicts
                             _, SessionLocalFix = create_engine_and_sessionmaker(
                                 database_url=settings.DATABASE_URL,
@@ -286,27 +284,48 @@ async def fetch_symbol_data(
                             
                             async with SessionLocalFix() as fix_session:
                                 try:
-                                    fixer = AdjustmentFixer(fix_session)
+                                    # Check if there are any unfixed split events for this symbol
+                                    stmt = select(CorporateEvent).where(
+                                        CorporateEvent.symbol == symbol,
+                                        CorporateEvent.event_type.in_(["stock_split", "reverse_split"]),
+                                        CorporateEvent.status.notin_(["fixed", "ignored"])  # Skip already processed
+                                    ).order_by(CorporateEvent.event_date.desc()).limit(1)
                                     
-                                    # Find the most recent split event we just created
-                                    for split_event in split_events:
-                                        stmt = select(CorporateEvent).where(
+                                    result = await fix_session.execute(stmt)
+                                    unfixed_event = result.scalar_one_or_none()
+                                    
+                                    if unfixed_event:
+                                        logger.info(
+                                            f"Found {len(split_events)} split event(s) for {symbol}, "
+                                            f"triggering auto-fix for unfixed event (id={unfixed_event.id})"
+                                        )
+                                        
+                                        fixer = AdjustmentFixer(fix_session)
+                                        fix_result = await fixer.auto_fix_symbol(symbol, unfixed_event.id)
+                                        
+                                        logger.info(
+                                            f"Auto-fix for {symbol}: job_id={fix_result.get('job_id')}, "
+                                            f"deleted_rows={fix_result.get('deleted_rows')}, "
+                                            f"split_events_count={len(split_events)}"
+                                        )
+                                        
+                                        # Mark all split events for this symbol as fixed
+                                        from sqlalchemy import update
+                                        update_stmt = update(CorporateEvent).where(
                                             CorporateEvent.symbol == symbol,
-                                            CorporateEvent.event_date == split_event["date"],
-                                            CorporateEvent.event_type.in_(["stock_split", "reverse_split"])
-                                        ).order_by(CorporateEvent.id.desc()).limit(1)
+                                            CorporateEvent.event_type.in_(["stock_split", "reverse_split"]),
+                                            CorporateEvent.status.notin_(["fixed", "ignored"])
+                                        ).values(
+                                            status="fixed",
+                                            fix_job_id=fix_result.get("job_id"),
+                                            fixed_at=datetime.utcnow()
+                                        )
+                                        await fix_session.execute(update_stmt)
+                                        await fix_session.commit()
                                         
-                                        result = await fix_session.execute(stmt)
-                                        event_obj = result.scalar_one_or_none()
-                                        
-                                        if event_obj:
-                                            fix_result = await fixer.auto_fix_symbol(symbol, event_obj.id)
-                                            logger.info(
-                                                f"Auto-fix for {symbol}: job_id={fix_result.get('job_id')}, "
-                                                f"deleted_rows={fix_result.get('deleted_rows')}"
-                                            )
-                                        else:
-                                            logger.warning(f"Could not find event object for {symbol} split on {split_event['date']}")
+                                        logger.info(f"Marked all unfixed split events for {symbol} as fixed")
+                                    else:
+                                        logger.debug(f"All {len(split_events)} split event(s) for {symbol} already fixed, skipping")
                                     
                                 except Exception as fix_error:
                                     logger.error(f"Auto-fix failed for {symbol}: {fix_error}", exc_info=True)

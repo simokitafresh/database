@@ -3,6 +3,7 @@ from typing import Any, cast
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 
 # Error codes for the API
@@ -17,6 +18,7 @@ SYMBOL_REGISTRATION_FAILED = "SYMBOL_REGISTRATION_FAILED"
 DATA_FETCH_ERROR = "DATA_FETCH_ERROR"
 EXPORT_ERROR = "EXPORT_ERROR"
 DATABASE_ERROR = "DATABASE_ERROR"
+DATABASE_CONNECTION_ERROR = "DATABASE_CONNECTION_ERROR"
 
 
 class JobNotFoundError(HTTPException):
@@ -126,6 +128,19 @@ class DatabaseError(HTTPException):
         )
 
 
+class DatabaseConnectionError(HTTPException):
+    """Exception raised when database connection fails after retries."""
+    def __init__(self, message: str = "Database connection temporarily unavailable"):
+        super().__init__(
+            status_code=503,
+            detail={
+                "code": DATABASE_CONNECTION_ERROR, 
+                "message": message,
+                "retry_after": 5
+            }
+        )
+
+
 def raise_http_error(status_code: int, message: str) -> None:
     """Raise an HTTPException with a unified error structure.
 
@@ -160,3 +175,34 @@ def init_error_handlers(app: FastAPI) -> None:
         return _http_exception_handler(request, exc)
 
     app.add_exception_handler(404, _not_found)
+    
+    # Handle SQLAlchemy connection errors gracefully
+    async def _sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+        error_msg = str(exc).lower()
+        is_connection_error = any(pattern in error_msg for pattern in [
+            "connection was closed",
+            "connection does not exist", 
+            "connection refused",
+            "connection reset",
+            "server closed",
+        ])
+        
+        if is_connection_error:
+            payload = {
+                "error": {
+                    "code": DATABASE_CONNECTION_ERROR,
+                    "message": "Database connection temporarily unavailable. Please retry.",
+                    "retry_after": 5
+                }
+            }
+            return JSONResponse(payload, status_code=503, headers={"Retry-After": "5"})
+        else:
+            payload = {
+                "error": {
+                    "code": DATABASE_ERROR,
+                    "message": "Database operation failed"
+                }
+            }
+            return JSONResponse(payload, status_code=500)
+    
+    app.add_exception_handler(SQLAlchemyError, cast(Any, _sqlalchemy_error_handler))

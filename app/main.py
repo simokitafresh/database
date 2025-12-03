@@ -28,9 +28,34 @@ async def lifespan(_: FastAPI):
         # 起動時の処理
         logger.info("Starting application...")
         
+        # DB接続のウォームアップ（起動時に接続を確立）
+        is_supabase = "supabase.com" in settings.DATABASE_URL
+        try:
+            from app.api.deps import _sessionmaker_for
+            from sqlalchemy import text
+            import asyncio
+            
+            SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
+            
+            # 最大3回リトライしてDB接続を確立
+            for attempt in range(3):
+                try:
+                    async with SessionLocal() as session:
+                        await session.execute(text("SELECT 1"))
+                        logger.info(f"Database connection established (attempt {attempt + 1})")
+                        break
+                except Exception as db_err:
+                    if attempt < 2:
+                        logger.warning(f"DB warmup attempt {attempt + 1} failed: {db_err}, retrying...")
+                        await asyncio.sleep(1)
+                    else:
+                        logger.error(f"DB warmup failed after 3 attempts: {db_err}")
+                        # エラーが起きてもアプリは起動させる（ヘルスチェックで検出される）
+        except Exception as e:
+            logger.warning(f"DB warmup skipped: {e}")
+        
         # プリフェッチサービス開始（ENABLE_CACHEがTrueで、Supabase環境でない場合のみ）
         # SupabaseのNullPool環境では並行処理が許可されていないため無効化
-        is_supabase = "supabase.com" in settings.DATABASE_URL
         if settings.ENABLE_CACHE and not is_supabase:
             try:
                 from app.services.prefetch_service import get_prefetch_service

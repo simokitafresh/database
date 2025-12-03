@@ -78,13 +78,9 @@ def create_engine_and_sessionmaker(
         if ssl_required:
             connect_args.setdefault("ssl", True)
         
-        # TCP Keepalive settings to prevent connection drops
-        connect_args.update({
-            "keepalives": 1,
-            "keepalives_idle": 30,
-            "keepalives_interval": 10,
-            "keepalives_count": 5,
-        })
+        # Note: TCP Keepalive settings (keepalives, keepalives_idle, etc.) 
+        # are libpq parameters not supported by asyncpg.
+        # asyncpg handles TCP keepalive at the OS level automatically.
 
         # Use NullPool for cloud deployment with connection poolers
         if "supabase.com" in database_url or "pgbouncer" in database_url.lower() or pool_size <= 1:

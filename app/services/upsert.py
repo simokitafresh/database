@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Dict, List, Tuple, Any, Optional
 from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_price_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -55,6 +58,7 @@ def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, 
     """Convert a price DataFrame into rows for bulk upsert.
 
     - Skips rows containing NaN values.
+    - Skips rows with zero or negative OHLC values (violates DB constraint).
     - Converts index to ``date`` and numeric fields to native Python types.
     - Normalizes OHLC to satisfy DB range checks in the presence of tiny
       floating-point inconsistencies from data providers (e.g., adjusted values
@@ -62,14 +66,27 @@ def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, 
     """
 
     rows: List[Dict[str, object]] = []
+    skipped_count = 0
+    
     for date, row in df.iterrows():
         if row.isna().any():
+            skipped_count += 1
             continue
 
         o = float(row["open"])
         h = float(row["high"])
         l = float(row["low"])
         c = float(row["close"])
+
+        # Skip rows with zero or negative OHLC values
+        # These violate the ck_prices_positive constraint and indicate invalid data
+        if o <= 0 or h <= 0 or l <= 0 or c <= 0:
+            logger.debug(
+                f"Skipping {symbol} {date}: invalid OHLC values "
+                f"(o={o}, h={h}, l={l}, c={c})"
+            )
+            skipped_count += 1
+            continue
 
         # Normalize to enforce: low <= min(open, close) and max(open, close) <= high
         # This guards against tiny floating errors from upstream adjustments.
@@ -82,9 +99,11 @@ def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, 
             vol = int(vol_raw)
         except Exception:
             # If volume cannot be interpreted as int, skip this row
+            skipped_count += 1
             continue
         if vol < 0:
             # Defensive: drop negative volumes
+            skipped_count += 1
             continue
 
         rows.append(
@@ -100,6 +119,11 @@ def df_to_rows(df: pd.DataFrame, *, symbol: str, source: str) -> List[Dict[str, 
                 "last_updated": datetime.now(timezone.utc),
             }
         )
+    
+    if skipped_count > 0:
+        logger.info(f"df_to_rows: skipped {skipped_count} invalid rows for {symbol}")
+    
+    return rows
     return rows
 
 

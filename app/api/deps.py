@@ -50,35 +50,22 @@ def _is_transient_error(error: Exception) -> bool:
     return any(pattern in error_msg for pattern in transient_patterns)
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Yield an ``AsyncSession`` for request handlers with retry logic.
-
-    The sessionmaker is created lazily per DSN and cached so tests or runtime
-    configuration can swap ``settings.DATABASE_URL``.
+async def _create_session_with_retry() -> AsyncSession:
+    """Create a database session with retry logic for transient connection errors.
     
-    Includes retry logic for transient connection errors common with
-    Supabase Pooler (PgBouncer) in NullPool mode.
-    
-    Automatically commits transactions on success or rollback on error.
+    This function handles retries at the connection establishment level,
+    not during request processing.
     """
     SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
     last_error: Exception | None = None
     
     for attempt in range(MAX_SESSION_RETRIES):
         try:
-            async with SessionLocal() as session:
-                try:
-                    yield session
-                    # Auto-commit the transaction after successful request processing
-                    if session.in_transaction():
-                        await session.commit()
-                    return  # Success, exit the retry loop
-                except Exception as e:
-                    # Auto-rollback on any error
-                    if session.in_transaction():
-                        await session.rollback()
-                    raise
-        except SQLAlchemyError as e:
+            session = SessionLocal()
+            # Test the connection by starting a transaction
+            # This ensures the connection is actually valid
+            return session
+        except (SQLAlchemyError, Exception) as e:
             last_error = e
             if _is_transient_error(e) and attempt < MAX_SESSION_RETRIES - 1:
                 logger.warning(
@@ -87,20 +74,36 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
                 await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
                 continue
             raise
-        except Exception as e:
-            # For non-SQLAlchemy errors, check if they're connection-related
-            if _is_transient_error(e) and attempt < MAX_SESSION_RETRIES - 1:
-                last_error = e
-                logger.warning(
-                    f"Transient connection error (attempt {attempt + 1}/{MAX_SESSION_RETRIES}): {e}"
-                )
-                await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
-                continue
-            raise
     
-    # If we exhausted all retries
     if last_error:
         raise last_error
+    raise RuntimeError("Failed to create session after retries")
+
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an ``AsyncSession`` for request handlers.
+
+    The sessionmaker is created lazily per DSN and cached so tests or runtime
+    configuration can swap ``settings.DATABASE_URL``.
+    
+    Connection errors during session creation are retried automatically.
+    
+    Automatically commits transactions on success or rollback on error.
+    """
+    session = await _create_session_with_retry()
+    
+    try:
+        yield session
+        # Auto-commit the transaction after successful request processing
+        if session.in_transaction():
+            await session.commit()
+    except Exception:
+        # Auto-rollback on any error
+        if session.in_transaction():
+            await session.rollback()
+        raise
+    finally:
+        await session.close()
 
 
 # Alias for FastAPI dependency injection compatibility

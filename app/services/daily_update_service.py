@@ -12,6 +12,9 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.db.queries import list_symbols, ensure_coverage
 from app.schemas.cron import CronDailyUpdateRequest, CronDailyUpdateResponse
+from app.schemas.events import CorporateEventCreate, EventTypeEnum, EventStatusEnum
+from app.services import event_service
+from app.services.adjustment_fixer import AdjustmentFixer
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +276,34 @@ class DailyUpdateService:
         processed_count = 0
         batch_number = 0
         
+        # Set to track symbols needing fix (split detected)
+        fix_candidates = set()
+
+        async def on_events(events: List[Dict[str, Any]]):
+            """Callback for event detection during fetch."""
+            for event_dict in events:
+                try:
+                    # Create event object
+                    event_data = CorporateEventCreate(
+                        symbol=event_dict["symbol"],
+                        event_date=event_dict["date"],
+                        event_type=EventTypeEnum(event_dict["type"]),
+                        ratio=event_dict.get("ratio"),
+                        amount=event_dict.get("amount"),
+                        detection_method="daily_fetch"
+                    )
+                    # Record event
+                    event = await event_service.record_event(self.session, event_data)
+                    
+                    # Check if fix needed (split/reverse_split)
+                    # We only fix if it's a split and it was just detected (or we want to be safe)
+                    if event.event_type in (EventTypeEnum.STOCK_SPLIT, EventTypeEnum.REVERSE_SPLIT):
+                        logger.info(f"Split detected for {event.symbol}: {event.event_type}")
+                        fix_candidates.add((event.symbol, event.id))
+                        
+                except Exception as e:
+                    logger.error(f"Error processing event for {event_dict.get('symbol')}: {e}")
+
         for batch_start in range(0, len(all_symbols), batch_size):
             batch_end = min(batch_start + batch_size, len(all_symbols))
             batch_symbols = all_symbols[batch_start:batch_end]
@@ -290,6 +321,7 @@ class DailyUpdateService:
                             date_from=date_from,
                             date_to=date_to,
                             refetch_days=settings.YF_REFETCH_DAYS,
+                            on_events=on_events,
                         ),
                         timeout=30.0,
                     )
@@ -306,6 +338,18 @@ class DailyUpdateService:
                 
                 if processed_count % 10 == 0:
                     await asyncio.sleep(1)
+            
+            # Process fixes for this batch
+            if fix_candidates:
+                logger.info(f"Processing {len(fix_candidates)} adjustment fixes for batch {batch_number}")
+                fixer = AdjustmentFixer(self.session)
+                for symbol, event_id in fix_candidates:
+                    try:
+                        # Use auto_fix_symbol from AdjustmentFixer
+                        await fixer.auto_fix_symbol(symbol, event_id)
+                    except Exception as e:
+                        logger.error(f"Failed to fix {symbol}: {e}")
+                fix_candidates.clear()
         
         return success_count, failed_symbols, batch_number
 

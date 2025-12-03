@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.locking import with_symbol_lock
-from app.services.fetcher import fetch_prices
+from app.services.fetcher import fetch_prices, fetch_prices_and_events
 from app.services.upsert import df_to_rows, upsert_prices_sql
 from app.db.queries_optimized import get_coverage_optimized
 
@@ -29,6 +29,12 @@ async def fetch_prices_df(symbol: str, start: date, end: date):
     """
     async with _fetch_semaphore:
         return await run_in_threadpool(fetch_prices, symbol, start, end, settings=settings)
+
+
+async def fetch_prices_and_events_df(symbol: str, start: date, end: date):
+    """Background wrapper around :func:`fetch_prices_and_events`."""
+    async with _fetch_semaphore:
+        return await run_in_threadpool(fetch_prices_and_events, symbol, start, end, settings=settings)
 
 
 async def _ensure_full_history_once(session: AsyncSession, symbol: str) -> None:
@@ -116,6 +122,7 @@ async def ensure_coverage(
     date_from: date,
     date_to: date,
     refetch_days: int,
+    on_events: Optional[callable] = None,
 ) -> None:
     """Ensure price data coverage for symbols.
 
@@ -230,7 +237,13 @@ async def ensure_coverage(
                 "fetching data range", extra=dict(symbol=symbol, start=str(start), end=str(end))
             )
 
-            df = await fetch_prices_df(symbol, start, end)
+            if on_events:
+                df, events = await fetch_prices_and_events_df(symbol, start, end)
+                if events:
+                    await on_events(events)
+            else:
+                df = await fetch_prices_df(symbol, start, end)
+                
             if df is None or df.empty:
                 logger.debug(
                     "yfinance returned empty frame",
@@ -335,6 +348,7 @@ async def ensure_coverage_unified(
     date_from: date,
     date_to: date,
     refetch_days: int,
+    on_events: Optional[callable] = None,
 ) -> Dict[str, Any]:
     """統一されたカバレッジ確保処理"""
     result_meta: Dict[str, Any] = {"fetched_ranges": {}, "row_counts": {}, "adjustments": {}}
@@ -383,11 +397,20 @@ async def ensure_coverage_unified(
                 }
 
             # データ取得
-            df = await fetch_prices_df(
-                symbol=symbol,
-                start=actual_start,
-                end=date_to,
-            )
+            if on_events:
+                df, events = await fetch_prices_and_events_df(
+                    symbol=symbol,
+                    start=actual_start,
+                    end=date_to,
+                )
+                if events:
+                    await on_events(events)
+            else:
+                df = await fetch_prices_df(
+                    symbol=symbol,
+                    start=actual_start,
+                    end=date_to,
+                )
 
             if df is not None and not df.empty:
                 rows = df_to_rows(df, symbol=symbol, source="yfinance")
@@ -409,6 +432,7 @@ async def ensure_coverage_unified(
                 date_from=date_from,
                 date_to=date_to,
                 refetch_days=refetch_days,
+                on_events=on_events,
             )
 
     return result_meta
@@ -437,6 +461,7 @@ async def ensure_coverage_parallel(
     date_from: date,
     date_to: date,
     refetch_days: int,
+    on_events: Optional[callable] = None,
 ) -> None:
     """
     複数銘柄のカバレッジを並行確認・取得する新規関数
@@ -532,7 +557,13 @@ async def ensure_coverage_parallel(
                 
                 # データ取得とUPSERT（既存の関数を利用）
                 for start, end in merged_ranges:
-                    df = await fetch_prices_df(symbol, start, end)
+                    if on_events:
+                        df, events = await fetch_prices_and_events_df(symbol, start, end)
+                        if events:
+                            await on_events(events)
+                    else:
+                        df = await fetch_prices_df(symbol, start, end)
+                        
                     if df is None or df.empty:
                         continue
                         

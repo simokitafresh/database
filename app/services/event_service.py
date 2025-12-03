@@ -369,3 +369,47 @@ async def check_event_exists(
         )
     )
     return result.scalar() > 0
+
+
+async def record_event(
+    session: AsyncSession,
+    event_data: CorporateEventCreate,
+) -> CorporateEvent:
+    """Record an event, handling duplicates.
+    
+    Args:
+        session: Database session
+        event_data: Event data
+        
+    Returns:
+        Created or existing event
+    """
+    # Check for duplicates
+    exists = await check_event_exists(
+        session,
+        event_data.symbol,
+        event_data.event_date,
+        event_data.event_type.value,
+    )
+    
+    if exists:
+        # If it exists, we return the existing event.
+        # But check_event_exists returns bool in current implementation!
+        # I need to change check_event_exists to return the event, or query it.
+        # The current check_event_exists returns bool.
+        
+        # So I need to fetch it.
+        query = select(CorporateEvent).where(
+            and_(
+                CorporateEvent.symbol == event_data.symbol,
+                CorporateEvent.event_date == event_data.event_date,
+                CorporateEvent.event_type == event_data.event_type.value,
+            )
+        )
+        result = await session.execute(query)
+        existing_event = result.scalar_one_or_none()
+        if existing_event:
+            return existing_event
+            
+    # Create new
+    return await create_event(session, event_data)

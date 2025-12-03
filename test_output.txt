@@ -1,0 +1,130 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.0, pytest-8.2.0, pluggy-1.6.0
+rootdir: C:\Python_app\database
+configfile: pyproject.toml
+plugins: anyio-4.10.0, asyncio-0.23.6, cov-4.1.0, mock-3.12.0, timeout-2.4.0
+asyncio: mode=Mode.AUTO
+timeout: 30.0s
+timeout method: thread
+timeout func_only: False
+collected 1 item
+
+tests\test_event_flow.py E                                               [100%]
+
+=================================== ERRORS ====================================
+________________ ERROR at setup of test_event_driven_fix_flow _________________
+file C:\Python_app\database\tests\test_event_flow.py, line 12
+  @pytest.mark.asyncio
+  async def test_event_driven_fix_flow(session):
+      """Test that a detected split triggers a fix."""
+
+      symbol = "TEST_SPLIT"
+
+      # 1. Setup: Create symbol
+      await session.execute(
+          text("INSERT INTO symbols (symbol, is_active) VALUES (:symbol, TRUE) ON CONFLICT DO NOTHING"),
+          {"symbol": symbol}
+      )
+      await session.commit()
+
+      # 2. Mock yfinance download to return data WITH a split
+      # Create a DataFrame with a split
+      dates = pd.date_range(start="2024-01-01", periods=5)
+      data = {
+          "Open": [100.0] * 5,
+          "High": [110.0] * 5,
+          "Low": [90.0] * 5,
+          "Close": [105.0] * 5,
+          "Volume": [1000] * 5,
+      }
+      df = pd.DataFrame(data, index=dates)
+      # Add Stock Splits column
+      df["Stock Splits"] = 0.0
+      df.loc[dates[-1], "Stock Splits"] = 2.0  # 2:1 split on the last day
+      df["Dividends"] = 0.0
+
+      # Mock fetcher._fetch_internal or yf.download
+      # It's easier to mock yf.download as fetcher calls it
+      with patch("yfinance.download", return_value=df) as mock_download:
+
+          # 3. Run Daily Update
+          service = DailyUpdateService(session)
+          request = CronDailyUpdateRequest(
+              date_from="2024-01-01",
+              date_to="2024-01-05",
+              dry_run=False,
+              check_adjustments=False # We rely on event-driven, not the post-check
+          )
+
+          # We need to ensure ensure_coverage calls our mocked fetcher
+          # ensure_coverage -> fetch_prices_and_events_df -> fetch_prices_and_events -> _fetch_internal -> yf.download
+
+          response = await service.execute_daily_update(request)
+
+          # 4. Verify Event Recorded
+          result = await session.execute(
+              text("SELECT * FROM corporate_events WHERE symbol = :symbol AND event_type = 'stock_split'"),
+              {"symbol": symbol}
+          )
+          event = result.fetchone()
+          assert event is not None, "Split event should be recorded"
+          assert event.ratio == 2.0
+          assert event.status == "fixed" or event.status == "fixing", f"Event status should be fixed/fixing, got {event.status}"
+
+          # 5. Verify Fix Job Created
+          # The fixer creates a FetchJob
+          result = await session.execute(
+              text("SELECT * FROM fetch_jobs WHERE status = 'pending' AND force_refresh = TRUE"),
+          )
+          job = result.fetchone()
+          assert job is not None, "Fix job should be created"
+          assert symbol in job.symbols
+E       fixture 'session' not found
+>       available fixtures: _session_event_loop, anyio_backend, anyio_backend_name, anyio_backend_options, async_client, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, class_mocker, cov, doctest_namespace, dummy_session, event_loop, event_loop_policy, fastapi_app, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, mocker, module_mocker, monkeypatch, no_cover, package_mocker, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, session_mocker, tests/test_event_flow.py::<event_loop>, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory
+>       use 'pytest --fixtures [testpath]' for help on them.
+
+C:\Python_app\database\tests\test_event_flow.py:12
+============================== warnings summary ===============================
+..\..\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\formparsers.py:12
+  C:\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.
+    import multipart
+
+..\..\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\_config.py:272
+..\..\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\_config.py:272
+..\..\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\_config.py:272
+..\..\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\_config.py:272
+  C:\Users\simok\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\_config.py:272: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+app\schemas\fetch_jobs.py:17
+  C:\Python_app\database\app\schemas\fetch_jobs.py:17: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('symbols')
+
+app\schemas\fetch_jobs.py:34
+  C:\Python_app\database\app\schemas\fetch_jobs.py:34: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('date_to')
+
+app\schemas\fetch_jobs.py:53
+  C:\Python_app\database\app\schemas\fetch_jobs.py:53: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('date_from')
+
+app\schemas\fetch_jobs.py:64
+  C:\Python_app\database\app\schemas\fetch_jobs.py:64: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('interval')
+
+app\schemas\fetch_jobs.py:71
+  C:\Python_app\database\app\schemas\fetch_jobs.py:71: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('priority')
+
+app\schemas\fetch_jobs.py:88
+  C:\Python_app\database\app\schemas\fetch_jobs.py:88: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator('percent')
+
+app\schemas\cron.py:28
+  C:\Python_app\database\app\schemas\cron.py:28: PydanticDeprecatedSince20: Pydantic V1 style `@validator` validators are deprecated. You should migrate to Pydantic V2 style `@field_validator` validators, see the migration guide for more details. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    @validator("date_from", "date_to", pre=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+ERROR tests/test_event_flow.py::test_event_driven_fix_flow
+======================== 12 warnings, 1 error in 0.02s ========================

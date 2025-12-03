@@ -3,7 +3,7 @@ import logging
 import time
 import io
 from datetime import date, timedelta
-from typing import Optional, Dict, List, Tuple, AsyncIterator
+from typing import Optional, Dict, List, Tuple, AsyncIterator, Any
 from urllib.error import HTTPError as URLlibHTTPError
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -56,6 +56,31 @@ def fetch_prices(
     yfinance's end parameter is exclusive, so we add 1 day internally
     to ensure the end date is included in the results.
     """
+    df, _ = _fetch_internal(symbol, start, end, settings, last_date, include_events=False)
+    return df
+
+
+def fetch_prices_and_events(
+    symbol: str,
+    start: date,
+    end: date,
+    *,
+    settings: Settings,
+    last_date: Optional[date] = None,
+) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+    """Fetch adjusted OHLCV data AND corporate events for ``symbol``."""
+    return _fetch_internal(symbol, start, end, settings, last_date, include_events=True)
+
+
+def _fetch_internal(
+    symbol: str,
+    start: date,
+    end: date,
+    settings: Settings,
+    last_date: Optional[date] = None,
+    include_events: bool = False,
+) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+    """Internal fetch logic handling both prices and events."""
     with error_context("fetch_prices", symbol=symbol, start=start, end=end):
         # Preemptively add caret for known indices to avoid initial failure logs
         known_indices = {"IRX", "FVX", "TNX", "TYX", "VIX", "GSPC", "DJI", "IXIC", "SOX", "RUT"}
@@ -86,30 +111,68 @@ def fetch_prices(
                 
                 with io.StringIO() as _out, io.StringIO() as _err, redirect_stdout(_out), redirect_stderr(_err):
                     df = yf.download(
-                    symbol,
-                    start=fetch_start,
-                    end=fetch_end,
-                    auto_adjust=True,
-                    progress=False,
-                    timeout=settings.FETCH_TIMEOUT_SECONDS,
-                )
+                        symbol,
+                        start=fetch_start,
+                        end=fetch_end,
+                        auto_adjust=True,
+                        actions=include_events,  # Capture events if requested
+                        progress=False,
+                        timeout=settings.FETCH_TIMEOUT_SECONDS,
+                    )
                 
+                events = []
+                if include_events and df is not None and not df.empty:
+                    # Extract events
+                    if "Stock Splits" in df.columns:
+                        splits = df["Stock Splits"]
+                        # Handle MultiIndex columns if present (yfinance sometimes returns them)
+                        if isinstance(splits, pd.DataFrame):
+                            # Try to find the column for the symbol
+                            if symbol in splits.columns:
+                                splits = splits[symbol]
+                            else:
+                                # Fallback: take the first column or flatten
+                                splits = splits.iloc[:, 0]
+                        
+                        splits = splits[splits != 0].dropna()
+                        for date_idx, ratio in splits.items():
+                            events.append({
+                                "date": date_idx.date(),
+                                "type": "stock_split" if ratio >= 1 else "reverse_split", # yfinance ratio is usually post/pre? No, yf split is usually e.g. 2.0 for 2:1.
+                                "ratio": float(ratio),
+                                "symbol": symbol
+                            })
+
+                    if "Dividends" in df.columns:
+                        divs = df["Dividends"]
+                        if isinstance(divs, pd.DataFrame):
+                            if symbol in divs.columns:
+                                divs = divs[symbol]
+                            else:
+                                divs = divs.iloc[:, 0]
+                        
+                        divs = divs[divs != 0].dropna()
+                        for date_idx, amount in divs.items():
+                            events.append({
+                                "date": date_idx.date(),
+                                "type": "dividend",
+                                "amount": float(amount),
+                                "symbol": symbol
+                            })
+
                 # Clean and validate data
                 cleaned_df = DataCleaner.clean_price_data(df)
                 
                 if cleaned_df is None:
-                    # Try fallback method
+                    # Try fallback method (only for prices, fallback doesn't support events well usually)
                     cleaned_df = _fetch_with_fallback(symbol, fetch_start, fetch_end, settings)
+                    # If fallback used, we might miss events. Acceptable for now.
                 
                 if cleaned_df is not None:
                     backoff.reset()  # Reset on success
-                    return cleaned_df
+                    return cleaned_df, events
                 
-                # If fallback also failed (returned None or empty), we might want to retry or give up?
-                # The original logic retried on exceptions, but if download returns empty DF, it might not raise exception.
-                # If yf.download returns empty DF, it usually means no data.
-                # We should probably return empty DF here if no exception raised.
-                return pd.DataFrame()
+                return pd.DataFrame(), []
                 
             except (
                 URLlibHTTPError,
@@ -340,4 +403,4 @@ async def fetch_prices_streaming(
             del tasks, results
 
 
-__all__ = ["fetch_prices", "fetch_prices_batch", "fetch_prices_streaming", "RateLimiter", "ExponentialBackoff", "_fetch_with_fallback"]
+__all__ = ["fetch_prices", "fetch_prices_and_events", "fetch_prices_batch", "fetch_prices_streaming", "RateLimiter", "ExponentialBackoff", "_fetch_with_fallback"]

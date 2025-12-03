@@ -38,7 +38,9 @@ def _normalize_sync_dsn(url: str) -> str:
     return url
 
 
-env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+from app.core.config import settings
+
+env_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL") or str(settings.DATABASE_URL)
 if env_url:
     env_url = _normalize_sync_dsn(env_url)
     # Avoid ConfigParser interpolation by escaping % as %%

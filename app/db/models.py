@@ -117,3 +117,66 @@ class EconomicIndicator(Base):
     last_updated = sa.Column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
+
+
+class CorporateEvent(Base):
+    """Corporate actions and price adjustment events."""
+
+    __tablename__ = "corporate_events"
+    __table_args__ = (
+        sa.UniqueConstraint("symbol", "event_date", "event_type", name="uq_corp_event"),
+        sa.ForeignKeyConstraint(
+            ["symbol"], ["symbols.symbol"], onupdate="CASCADE", ondelete="CASCADE"
+        ),
+        sa.CheckConstraint(
+            "event_type IN ('stock_split', 'reverse_split', 'dividend', 'special_dividend', 'capital_gain', 'spinoff', 'unknown')",
+            name="ck_corp_event_type",
+        ),
+        sa.CheckConstraint(
+            "status IN ('detected', 'confirmed', 'fixing', 'fixed', 'ignored', 'failed')",
+            name="ck_corp_event_status",
+        ),
+        sa.CheckConstraint(
+            "severity IN ('critical', 'high', 'normal', 'low')",
+            name="ck_corp_event_severity",
+        ),
+        Index("idx_corp_events_symbol", "symbol"),
+        Index("idx_corp_events_date", sa.text("event_date DESC")),
+        Index("idx_corp_events_type", "event_type"),
+        Index("idx_corp_events_status", "status", postgresql_where=sa.text("status != 'fixed'")),
+        Index("idx_corp_events_detected", sa.text("detected_at DESC")),
+    )
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    
+    # Event Identification
+    symbol = sa.Column(sa.String(20), nullable=False)
+    event_date = sa.Column(sa.Date, nullable=False)
+    event_type = sa.Column(sa.String(30), nullable=False)
+    
+    # Event Details
+    ratio = sa.Column(sa.Numeric(10, 6), nullable=True)
+    amount = sa.Column(sa.Numeric(12, 4), nullable=True)
+    currency = sa.Column(sa.String(3), nullable=True, default='USD')
+    ex_date = sa.Column(sa.Date, nullable=True)
+    
+    # Detection Info
+    detected_at = sa.Column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    detection_method = sa.Column(sa.String(20), nullable=True, default='auto')
+    db_price_at_detection = sa.Column(sa.Numeric(12, 4), nullable=True)
+    yf_price_at_detection = sa.Column(sa.Numeric(12, 4), nullable=True)
+    pct_difference = sa.Column(sa.Numeric(8, 6), nullable=True)
+    severity = sa.Column(sa.String(10), nullable=True)
+    
+    # Fix Info
+    status = sa.Column(sa.String(20), nullable=True, default='detected')
+    fixed_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
+    fix_job_id = sa.Column(sa.String(50), nullable=True)
+    rows_deleted = sa.Column(sa.Integer, nullable=True)
+    rows_refetched = sa.Column(sa.Integer, nullable=True)
+    
+    # Metadata
+    source_data = sa.Column(postgresql.JSONB, nullable=True)
+    notes = sa.Column(sa.Text, nullable=True)
+    created_at = sa.Column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now())
+    updated_at = sa.Column(sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now(), onupdate=sa.func.now())

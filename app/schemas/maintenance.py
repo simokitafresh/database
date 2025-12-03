@@ -43,6 +43,7 @@ class AdjustmentEventResponse(BaseModel):
     yf_adjusted_price: float
     details: Dict[str, Any] = Field(default_factory=dict)
     recommendation: str = ""
+    event_id: Optional[int] = None
 
 
 class ScanResultResponse(BaseModel):

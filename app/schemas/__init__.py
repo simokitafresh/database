@@ -24,6 +24,20 @@ try:
 except ImportError:
     pass
 
+try:
+    from .events import (
+        EventTypeEnum,
+        EventStatusEnum,
+        EventSeverityEnum,
+        CorporateEventBase,
+        CorporateEventCreate,
+        CorporateEventUpdate,
+        CorporateEventResponse,
+        CorporateEventListResponse,
+    )
+except ImportError:
+    pass
+
 __all__ = [
     # Common schemas
     "BaseResponse",
@@ -40,4 +54,13 @@ __all__ = [
     # Fetch job schemas
     "FetchJobCreate",
     "FetchJobResponse",
+    # Event schemas
+    "EventTypeEnum",
+    "EventStatusEnum",
+    "EventSeverityEnum",
+    "CorporateEventBase",
+    "CorporateEventCreate",
+    "CorporateEventUpdate",
+    "CorporateEventResponse",
+    "CorporateEventListResponse",
 ]

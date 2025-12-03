@@ -123,6 +123,10 @@
   - [ ] `/v1/maintenance/adjustment-report` で `corporate_events` を参照
   - [ ] レスポンスにイベントID含める
 
+### Task 4.4: Cronエンドポイント更新
+- [ ] `app/api/v1/cron.py` 確認・更新
+  - [ ] `/v1/adjustment-check` が新しい `adjustment_detector` のロジック（イベント記録）を正しく呼び出すことを確認
+
 ---
 
 ## Phase 5: テスト（0.5日）

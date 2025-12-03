@@ -5,10 +5,10 @@ import uuid
 from datetime import date, timedelta, datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Price, FetchJob
+from app.db.models import Price, FetchJob, CorporateEvent
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,11 @@ class AdjustmentFixer:
     def __init__(self, session: AsyncSession):
         self.session = session
         
-    async def auto_fix_symbol(self, symbol: str) -> Dict[str, Any]:
+    async def auto_fix_symbol(
+        self,
+        symbol: str,
+        event_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Automatically fix a symbol by deleting and re-fetching data.
         
         Deletes all existing price data for the symbol and creates a
@@ -26,6 +30,7 @@ class AdjustmentFixer:
         
         Args:
             symbol: Symbol to fix.
+            event_id: Optional corporate event ID to update status for.
             
         Returns:
             Dictionary containing fix operation results.
@@ -41,6 +46,14 @@ class AdjustmentFixer:
         }
         
         try:
+            # Update event status to 'fixing' if event_id provided
+            if event_id:
+                await self.session.execute(
+                    update(CorporateEvent)
+                    .where(CorporateEvent.id == event_id)
+                    .values(status='fixing', updated_at=datetime.utcnow())
+                )
+            
             # Get the date range of existing data before deletion
             range_result = await self.session.execute(
                 select(
@@ -84,6 +97,20 @@ class AdjustmentFixer:
             result["job_created"] = True
             result["job_id"] = job_id
             
+            # Update event status to 'fixed' if event_id provided
+            if event_id:
+                await self.session.execute(
+                    update(CorporateEvent)
+                    .where(CorporateEvent.id == event_id)
+                    .values(
+                        status='fixed',
+                        fixed_at=datetime.utcnow(),
+                        fix_job_id=job_id,
+                        rows_deleted=result["deleted_rows"],
+                        updated_at=datetime.utcnow()
+                    )
+                )
+            
             await self.session.commit()
             
             logger.info(
@@ -94,6 +121,19 @@ class AdjustmentFixer:
         except Exception as e:
             logger.error(f"Auto-fix failed for {symbol}: {str(e)}")
             result["error"] = str(e)
-            await self.session.rollback()
+            
+            # Update event status to 'failed' if event_id provided
+            if event_id:
+                try:
+                    await self.session.execute(
+                        update(CorporateEvent)
+                        .where(CorporateEvent.id == event_id)
+                        .values(status='failed', updated_at=datetime.utcnow())
+                    )
+                    await self.session.commit()
+                except:
+                    pass
+            else:
+                await self.session.rollback()
         
         return result

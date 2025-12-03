@@ -22,6 +22,12 @@ from app.db.queries.adjustments import (
     get_closest_price_before_date,
 )
 from app.services.adjustment_fixer import AdjustmentFixer
+from app.services import event_service
+from app.schemas.events import (
+    CorporateEventCreate,
+    EventTypeEnum,
+    EventSeverityEnum,
+)
 
 
 class AdjustmentType(Enum):
@@ -285,6 +291,65 @@ class PrecisionAdjustmentDetector:
         details["note"] = "Could not determine cause"
         return AdjustmentType.UNKNOWN, AdjustmentSeverity.LOW, details
 
+    async def _record_event(
+        self,
+        session: AsyncSession,
+        event: AdjustmentEvent,
+    ) -> Optional[int]:
+        """Record detected event to database if not exists.
+        
+        Args:
+            session: Database session
+            event: Detected adjustment event
+            
+        Returns:
+            Created event ID or None if skipped/failed
+        """
+        try:
+            # Check for duplicates
+            exists = await event_service.check_event_exists(
+                session,
+                event.symbol,
+                date.fromisoformat(event.check_date),
+                event.event_type.value,
+            )
+            
+            if exists:
+                return None
+            
+            # Create event
+            event_data = CorporateEventCreate(
+                symbol=event.symbol,
+                event_date=date.fromisoformat(event.check_date),
+                event_type=EventTypeEnum(event.event_type.value),
+                severity=EventSeverityEnum(event.severity.value),
+                detection_method="auto",
+                db_price_at_detection=Decimal(str(event.db_price)),
+                yf_price_at_detection=Decimal(str(event.yf_adjusted_price)),
+                pct_difference=Decimal(str(event.pct_difference)),
+                source_data=event.details,
+                notes=event.recommendation,
+            )
+            
+            # Add specific fields based on event type
+            if event.event_type == AdjustmentType.STOCK_SPLIT or event.event_type == AdjustmentType.REVERSE_SPLIT:
+                if "cumulative_factor" in event.details:
+                    event_data.ratio = Decimal(str(event.details["cumulative_factor"]))
+            
+            if event.event_type == AdjustmentType.DIVIDEND or event.event_type == AdjustmentType.SPECIAL_DIVIDEND:
+                if "total_dividends" in event.details:
+                    event_data.amount = Decimal(str(event.details["total_dividends"]))
+                elif "special_dividend" in event.details:
+                    event_data.amount = Decimal(str(event.details["special_dividend"]))
+            
+            created_event = await event_service.create_event(session, event_data)
+            return created_event.id
+            
+        except Exception as e:
+            # Log error but don't fail detection
+            # logger.error(f"Failed to record event for {event.symbol}: {e}")
+            return None
+
     async def get_sample_prices(
         self,
         session: AsyncSession,
@@ -491,6 +556,12 @@ class PrecisionAdjustmentDetector:
                         details=details,
                         recommendation=recommendation,
                     )
+                    
+                    # Record event to database
+                    event_id = await self._record_event(session, event)
+                    if event_id:
+                        event.details["event_id"] = event_id
+                        
                     result.events.append(event)
                     result.max_pct_diff = max(result.max_pct_diff, pct_diff)
             
@@ -574,7 +645,14 @@ class PrecisionAdjustmentDetector:
                     
                     # Auto-fix if enabled
                     if fixer:
-                        fix_result = await fixer.auto_fix_symbol(symbol)
+                        # Use the first critical/high event ID for tracking
+                        event_id = None
+                        for event in detection_result.events:
+                            if "event_id" in event.details:
+                                event_id = event.details["event_id"]
+                                break
+                        
+                        fix_result = await fixer.auto_fix_symbol(symbol, event_id=event_id)
                         scan_result["fixed"].append({
                             "symbol": symbol,
                             **fix_result,

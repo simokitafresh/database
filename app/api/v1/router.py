@@ -8,6 +8,7 @@ from .cron import router as cron_router
 from .debug import router as debug_router
 from .economic import router as economic_router
 from .maintenance import router as maintenance_router
+from .events import router as events_router
 
 router = APIRouter(prefix="/v1")
 router.include_router(symbols_router)
@@ -18,6 +19,7 @@ router.include_router(cron_router)
 router.include_router(debug_router)
 router.include_router(economic_router)
 router.include_router(maintenance_router)
+router.include_router(events_router)
 
 
 @router.get("/health")

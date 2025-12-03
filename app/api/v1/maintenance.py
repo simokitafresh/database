@@ -102,6 +102,7 @@ async def check_adjustments(
                     yf_adjusted_price=ev["yf_adjusted_price"],
                     details=ev.get("details", {}),
                     recommendation=ev.get("recommendation", ""),
+                    event_id=ev.get("details", {}).get("event_id"),
                 )
                 for ev in item.get("events", [])
             ]
@@ -232,6 +233,7 @@ async def get_adjustment_report(
                 yf_adjusted_price=ev["yf_adjusted_price"],
                 details=ev.get("details", {}),
                 recommendation=ev.get("recommendation", ""),
+                event_id=ev.get("details", {}).get("event_id"),
             )
             for ev in item.get("events", [])
         ]

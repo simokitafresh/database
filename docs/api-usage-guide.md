@@ -492,6 +492,54 @@ Sample response:
 }
 ```
 
+### Corporate Events
+#### GET `/v1/events`
+List corporate events (splits, dividends) with filtering.
+
+Query parameters:
+| Name | Type | Notes |
+| --- | --- | --- |
+| `symbol` | string | Filter by symbol |
+| `event_type` | string | `stock_split`, `dividend`, etc. |
+| `status` | string | `detected`, `fixed`, `confirmed`, `ignored` |
+| `from` | date | Start date |
+| `to` | date | End date |
+| `page` | int | Default 1 |
+| `page_size` | int | Default 50 |
+
+Sample response:
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "symbol": "AAPL",
+      "event_date": "2020-08-31",
+      "event_type": "stock_split",
+      "ratio": 4.0,
+      "status": "fixed",
+      "detection_method": "daily_fetch",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 50
+}
+```
+
+#### GET `/v1/events/splits`
+Get split history calendar.
+
+Query parameters:
+- `from`, `to`, `symbol`
+
+#### GET `/v1/events/dividends`
+Get dividend calendar.
+
+Query parameters:
+- `from`, `to`, `symbol`
+
 ### Maintenance Endpoints (Price Adjustment Detection)
 These endpoints detect and fix discrepancies between stored prices and Yahoo Finance's adjusted prices caused by corporate actions (splits, dividends).
 
@@ -755,7 +803,9 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
 3. **Daily operations**: run `/v1/daily-update` from a scheduler using the cron secret, then inspect `/v1/status` to confirm success.
 4. **Economic data updates**: run `/v1/daily-economic-update` for FRED Treasury Bill rate data updates.
 5. **Debug and monitor**: use `/v1/prices/count/{symbol}` to check data persistence, `/v1/performance/report` for profiling, and `/v1/debug/cache-stats` for cache inspection (dev/staging only).
-6. **Price adjustment maintenance**: periodically run `/v1/maintenance/check-adjustments` or `/v1/adjustment-check` (cron) to detect split/dividend adjustments; review with `/v1/maintenance/adjustment-report`; fix via `/v1/maintenance/fix-adjustments`.
+6.  **Price adjustment maintenance**:
+    *   **Event-Driven (Automatic)**: The system automatically detects splits/dividends during daily updates and fixes them. Check status via `GET /v1/events`.
+    *   **Safety Net (Manual/Cron)**: Periodically run `/v1/maintenance/check-adjustments` or `/v1/adjustment-check` (cron) to detect missed adjustments; review with `/v1/maintenance/adjustment-report`; fix via `/v1/maintenance/fix-adjustments`.
 
 ## Helpful Source Files
 - `app/api/v1/prices.py` - Price data retrieval and deletion
@@ -763,11 +813,13 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
 - `app/api/v1/fetch.py` - Fetch job management
 - `app/api/v1/cron.py` - Scheduled maintenance endpoints
 - `app/api/v1/maintenance.py` - Price adjustment detection and fixing
+- `app/api/v1/events.py` - Corporate events management
 - `app/api/v1/symbols.py` - Symbol directory
 - `app/api/v1/health.py` - Health check endpoints
 - `app/api/v1/debug.py` - Debug endpoints (cache stats)
 - `app/api/v1/economic.py` - Economic indicators API (DTB3)
 - `app/services/adjustment_detector.py` - Adjustment detection service
+- `app/services/event_service.py` - Corporate event management service
 - `app/services/fred_service.py` - FRED API integration
 - `app/schemas/maintenance.py` - Adjustment check/fix schemas
 - `app/schemas/economic.py` - Economic data schemas

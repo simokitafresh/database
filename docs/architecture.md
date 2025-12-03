@@ -61,6 +61,7 @@ sequenceDiagram
 1ホップのシンボル変更透過解決：symbol_changesに基づき、区間分割（<change_date は旧、>=change_date は新）。レスポンスは常に現行シンボルで返す（任意で source_symbol を各行に含め可）。
 
 直近N日リフレッチ：分割・配当反映の遅延に備え、毎回 last_date - N から再取得してUPSERT（N=30など環境変数化）。
+※イベント駆動システム導入により、分割発生時は即座に全期間再取得が行われるため、このリフレッチはあくまで「念のため」のセーフティネットとなる。
 
 アドバイザリロック：同一シンボルの初回取得競合をDB側で防止。
 
@@ -110,6 +111,7 @@ repo-root/
 │  │     ├─ prices.py              # GET/DELETE /v1/prices
 │  │     ├─ coverage.py            # GET /v1/coverage, /coverage/export
 │  │     ├─ fetch.py               # POST/GET /v1/fetch (ジョブ管理)
+│  │     ├─ events.py              # GET /v1/events (イベント管理)
 │  │     └─ health.py              # GET /healthz
 │  ├─ db/
 │  │  ├─ base.py                   # SQLAlchemy Declarative Base
@@ -125,14 +127,18 @@ repo-root/
 │  │  ├─ coverage.py               # カバレッジサービス（フィルタ・ソート）
 │  │  ├─ job_manager.py            # ジョブ管理サービス
 │  │  ├─ job_worker.py             # ジョブ実行ワーカー
+│  │  ├─ job_worker.py             # ジョブ実行ワーカー
 │  │  ├─ query_optimizer.py        # SQL最適化（CTE利用、50-70%高速化）
-│  │  └─ normalize.py              # シンボル正規化（Yahoo準拠, BRK.B→BRK-B等）
+│  │  ├─ normalize.py              # シンボル正規化（Yahoo準拠, BRK.B→BRK-B等）
+│  │  ├─ event_service.py          # イベント管理・記録
+│  │  └─ adjustment_fixer.py       # 調整修正（再取得ジョブ作成）
 │  ├─ schemas/
 │  │  ├─ common.py                 # Pydantic共通（DateRange等）
 │  │  ├─ symbols.py                # SymbolOut 等
 │  │  ├─ prices.py                 # PriceRowOut 等
 │  │  ├─ coverage.py               # CoverageOut, CoverageRequest等
-│  │  └─ jobs.py                   # JobOut, JobRequest等
+│  │  ├─ jobs.py                   # JobOut, JobRequest等
+│  │  └─ events.py                 # CorporateEventResponse等
 │  ├─ migrations/                  # Alembic
 │  │  ├─ env.py
 │  │  ├─ script.py.mako
@@ -284,6 +290,19 @@ fetch_jobsテーブルとの CRUD 操作。
 3. 各ポイントで乖離率計算（閾値1%超で要修正判定）
 4. 乖離パターンから調整タイプ推定（2倍→分割、0.5倍→逆分割、数%→配当等）
 5. 要修正時、既存価格を削除しfetch_jobを作成して再取得
+
+
+3.9 app/services/event_service.py & adjustment_fixer.py（新規：イベント駆動修正）
+
+**概要:** 日次データ取得時に `yfinance` からイベント（分割・配当）を直接検知し、即座に修正を行うメインシステム。
+
+**フロー:**
+1. `fetcher.py` が `actions=True` でデータ取得
+2. 分割/配当が含まれていれば `event_service.record_event` でDB保存
+3. 株式分割の場合、`daily_update_service` が `AdjustmentFixer` を呼び出し
+4. `AdjustmentFixer` が対象シンボルの全データを削除し、高優先度の再取得ジョブを作成
+
+これにより、乖離検知（AdjustmentDetector）を待たずに、イベント発生翌日には正しいデータに修正される。
 
 
 3.8 app/services/job_worker.py（新規：ジョブ実行エンジン）
@@ -453,6 +472,20 @@ CREATE TABLE prices (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   error_message TEXT,
   result        JSONB
+);
+
+**CREATE TABLE corporate_events** (
+  id            SERIAL PRIMARY KEY,
+  symbol        TEXT NOT NULL,
+  event_date    DATE NOT NULL,
+  event_type    TEXT NOT NULL, -- stock_split, dividend, etc.
+  ratio         NUMERIC,
+  amount        NUMERIC,
+  status        TEXT NOT NULL DEFAULT 'detected', -- detected, fixed, confirmed, ignored, failed, fixing
+  detection_method TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(symbol, event_date, event_type)
 );
 
 **カバレッジビュー（パフォーマンス最適化対応）**

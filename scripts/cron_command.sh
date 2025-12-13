@@ -75,13 +75,14 @@ END_DATE=$(date +%Y-%m-%d)
 
 log "Date range: $START_DATE to $END_DATE"
 
-# Step 3: Create fetch job
+# Step 3: Create fetch job (full history refresh for all symbols)
+# Note: With full history UPSERT, this can take 5+ minutes per symbol
 log "Creating fetch job..."
 JOB_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
   -X POST "${BASE_URL}/v1/fetch" \
   -H "Content-Type: application/json" \
   -d "{\"symbols\": [\"$(echo $SYMBOLS | sed 's/,/\",\"/g')\"], \"date_from\": \"$START_DATE\", \"date_to\": \"$END_DATE\"}" \
-  --max-time 60)
+  --max-time 1800)
 
 # Extract HTTP status and body
 JOB_HTTP_STATUS=$(echo "$JOB_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)

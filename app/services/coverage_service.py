@@ -103,6 +103,67 @@ async def _ensure_full_history_once(session: AsyncSession, symbol: str) -> None:
         logger.warning(f"full-history prefetch failed for {symbol}: {e}", exc_info=True)
 
 
+async def refresh_full_history(
+    session: AsyncSession,
+    symbol: str,
+) -> int:
+    """Fetch full history from yfinance and UPSERT all data.
+
+    This function always fetches the complete price history and updates
+    the database with the latest adjusted prices. Used for daily updates
+    to ensure split/dividend adjustments are properly reflected.
+    
+    Args:
+        session: Database session
+        symbol: Symbol to refresh
+        
+    Returns:
+        Number of rows upserted, or 0 if failed
+    """
+    EPOCH_START = date(1970, 1, 1)
+    today = date.today()
+    
+    try:
+        df = await fetch_prices_df(symbol, EPOCH_START, today)
+        if df is None or df.empty:
+            logger.debug(f"No data returned for {symbol}")
+            return 0
+        
+        rows = df_to_rows(df, symbol=symbol, source="yfinance")
+        if not rows:
+            logger.debug(f"No valid rows for {symbol}")
+            return 0
+        
+        up_sql = text(upsert_prices_sql())
+        await session.execute(up_sql, rows)
+        
+        # Update symbol metadata
+        dates = [r.get("date") for r in rows if r.get("date") is not None]
+        if dates:
+            min_date = min(dates)
+            max_date = max(dates)
+            await session.execute(
+                text(
+                    """
+                    UPDATE symbols
+                    SET first_date = COALESCE(LEAST(first_date, :min_date), :min_date),
+                        last_date  = COALESCE(GREATEST(last_date, :max_date), :max_date)
+                    WHERE symbol = :symbol
+                    """
+                ),
+                {"symbol": symbol, "min_date": min_date, "max_date": max_date},
+            )
+            logger.info(f"Refreshed {symbol}: {len(rows)} rows ({min_date} to {max_date})")
+        else:
+            logger.info(f"Refreshed {symbol}: {len(rows)} rows (no date metadata)")
+        
+        return len(rows)
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh {symbol}: {e}")
+        return 0
+
+
 async def _get_coverage(session: AsyncSession, symbol: str, date_from: date, date_to: date) -> dict:
     """Return coverage information with weekday gap detection.
 

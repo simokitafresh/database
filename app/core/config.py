@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     CRON_SECRET_TOKEN: str = ""
     CRON_BATCH_SIZE: int = 50
     CRON_UPDATE_DAYS: int = 7
+    CRON_FULL_HISTORY_TIMEOUT: int = 300  # Timeout for full history fetch (seconds), adjust after observing actual times
 
     # FRED API Settings
     FRED_API_KEY: Optional[str] = None

@@ -6,21 +6,15 @@ from datetime import date, datetime
 from typing import Any, Dict, List
 
 from sqlalchemy import text
-from starlette.concurrency import run_in_threadpool
-from decimal import Decimal
 
 from app.core.config import settings
 from app.db.engine import create_engine_and_sessionmaker
 from app.schemas.fetch_jobs import FetchJobProgress, FetchJobResult
-from app.schemas.events import CorporateEventCreate, EventTypeEnum
 from app.services.fetch_jobs import (
     save_job_results,
     update_job_progress,
     update_job_status,
 )
-from app.services.fetcher import fetch_prices_and_events
-from app.services.upsert import upsert_prices, df_to_rows
-from app.services.event_service import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -181,172 +175,29 @@ async def fetch_symbol_data(
     symbol: str, date_from: date, date_to: date, interval: str = "1d", force: bool = False
 ) -> FetchJobResult:
     """
-    Fetch data for a single symbol using yfinance.
+    Fetch full history for a single symbol and UPSERT to database.
+
+    This function always fetches the complete price history (1970-today)
+    and updates the database with the latest adjusted prices to ensure
+    split/dividend adjustments are properly reflected.
 
     Args:
         symbol: Symbol to fetch
-        date_from: Start date
-        date_to: End date
-        interval: Data interval
-        force: Whether to force refresh existing data
+        date_from: Start date (ignored - full history is always fetched)
+        date_to: End date (ignored - fetches up to today)
+        interval: Data interval (ignored - always uses 1d)
+        force: Whether to force refresh existing data (ignored - always refreshes)
 
     Returns:
         FetchJobResult with fetch status and row count
     """
     try:
-        # Fetch data using the robust fetcher service
-        logger.info(f"Downloading {symbol} from {date_from} to {date_to}")
+        logger.info(f"Fetching full history for {symbol}")
         
-        # Run synchronous fetch in thread pool to avoid blocking event loop
-        df, events = await run_in_threadpool(
-            fetch_prices_and_events,
-            symbol=symbol,
-            start=date_from,
-            end=date_to,
-            settings=settings
-        )
-
-        if df is None or df.empty:
-            logger.warning(f"No data returned for {symbol}")
-            # Even if no price data, we might have events? 
-            # Usually yfinance returns empty df if no data, but events might be separate.
-            # But fetch_prices_and_events implementation returns empty df and empty events if fetch fails.
-            if not events:
-                return FetchJobResult(
-                    symbol=symbol,
-                    status="no_data",
-                    rows_fetched=0,
-                    error="No data available for the specified date range",
-                )
-
-        # Record events if any
-        if events:
-            # Create a separate session for events to ensure they are committed
-            # regardless of price upsert success/failure, or to keep transactions separate.
-            _, SessionLocalEvents = create_engine_and_sessionmaker(
-                database_url=settings.DATABASE_URL,
-                pool_size=1,
-                max_overflow=0,
-                pool_pre_ping=settings.DB_POOL_PRE_PING,
-                pool_recycle=settings.DB_POOL_RECYCLE,
-                echo=False,
-            )
-            
-            async with SessionLocalEvents() as event_session:
-                try:
-                    event_count = 0
-                    for event_dict in events:
-                        # Map string type to Enum
-                        event_type_str = event_dict.get("type")
-                        if event_type_str == "stock_split":
-                            event_type = EventTypeEnum.STOCK_SPLIT
-                        elif event_type_str == "reverse_split":
-                            event_type = EventTypeEnum.REVERSE_SPLIT
-                        elif event_type_str == "dividend":
-                            event_type = EventTypeEnum.DIVIDEND
-                        elif event_type_str == "special_dividend":
-                            event_type = EventTypeEnum.SPECIAL_DIVIDEND
-                        else:
-                            event_type = EventTypeEnum.UNKNOWN
-
-                        event_data = CorporateEventCreate(
-                            symbol=event_dict["symbol"],
-                            event_date=event_dict["date"],
-                            event_type=event_type,
-                            ratio=Decimal(str(event_dict["ratio"])) if "ratio" in event_dict else None,
-                            amount=Decimal(str(event_dict["amount"])) if "amount" in event_dict else None,
-                            detection_method="daily_fetch",
-                            source_data={"source": "yfinance", "job_type": "daily_fetch"}
-                        )
-                        await record_event(event_session, event_data)
-                        event_count += 1
-                    
-                    logger.info(f"Recorded {event_count} events for {symbol}")
-                    
-                    # Auto-fix for splits if enabled
-                    if settings.ADJUSTMENT_AUTO_FIX and events:
-                        from app.services.adjustment_fixer import AdjustmentFixer
-                        from app.db.models import CorporateEvent
-                        from sqlalchemy import select
-                        
-                        split_events = [e for e in events if e.get("type") in ("stock_split", "reverse_split")]
-                        
-                        if split_events:
-                            # Create separate session for fix to avoid transaction conflicts
-                            _, SessionLocalFix = create_engine_and_sessionmaker(
-                                database_url=settings.DATABASE_URL,
-                                pool_size=1,
-                                max_overflow=0,
-                                pool_pre_ping=settings.DB_POOL_PRE_PING,
-                                pool_recycle=settings.DB_POOL_RECYCLE,
-                                echo=False,
-                            )
-                            
-                            async with SessionLocalFix() as fix_session:
-                                try:
-                                    # Check if there are any unfixed split events for this symbol
-                                    stmt = select(CorporateEvent).where(
-                                        CorporateEvent.symbol == symbol,
-                                        CorporateEvent.event_type.in_(["stock_split", "reverse_split"]),
-                                        CorporateEvent.status.notin_(["fixed", "ignored"])  # Skip already processed
-                                    ).order_by(CorporateEvent.event_date.desc()).limit(1)
-                                    
-                                    result = await fix_session.execute(stmt)
-                                    unfixed_event = result.scalar_one_or_none()
-                                    
-                                    if unfixed_event:
-                                        logger.info(
-                                            f"Found {len(split_events)} split event(s) for {symbol}, "
-                                            f"triggering auto-fix for unfixed event (id={unfixed_event.id})"
-                                        )
-                                        
-                                        fixer = AdjustmentFixer(fix_session)
-                                        fix_result = await fixer.auto_fix_symbol(symbol, unfixed_event.id)
-                                        
-                                        logger.info(
-                                            f"Auto-fix for {symbol}: job_id={fix_result.get('job_id')}, "
-                                            f"deleted_rows={fix_result.get('deleted_rows')}, "
-                                            f"split_events_count={len(split_events)}"
-                                        )
-                                        
-                                        # Mark all split events for this symbol as fixed
-                                        from sqlalchemy import update
-                                        update_stmt = update(CorporateEvent).where(
-                                            CorporateEvent.symbol == symbol,
-                                            CorporateEvent.event_type.in_(["stock_split", "reverse_split"]),
-                                            CorporateEvent.status.notin_(["fixed", "ignored"])
-                                        ).values(
-                                            status="fixed",
-                                            fix_job_id=fix_result.get("job_id"),
-                                            fixed_at=datetime.utcnow()
-                                        )
-                                        await fix_session.execute(update_stmt)
-                                        await fix_session.commit()
-                                        
-                                        logger.info(f"Marked all unfixed split events for {symbol} as fixed")
-                                    else:
-                                        logger.debug(f"All {len(split_events)} split event(s) for {symbol} already fixed, skipping")
-                                    
-                                except Exception as fix_error:
-                                    logger.error(f"Auto-fix failed for {symbol}: {fix_error}", exc_info=True)
-                                    # Don't fail the entire job if auto-fix fails
-                
-                except Exception as e:
-                    logger.error(f"Failed to record events for {symbol}: {e}")
-                    # Continue to upsert prices even if event recording fails
-
-        if df is None or df.empty:
-             return FetchJobResult(
-                symbol=symbol,
-                status="no_data",
-                rows_fetched=0,
-                error="No data available (events recorded: {len(events)})" if events else "No data available",
-            )
-
-        # Prepare data for upsert using the helper
-        rows_to_upsert = df_to_rows(df, symbol=symbol, source="yfinance")
-
-        # 独立したセッションを作成（単一タスク用）
+        # Import refresh_full_history from coverage_service
+        from app.services.coverage_service import refresh_full_history
+        
+        # Create independent session for this symbol
         _, SessionLocal = create_engine_and_sessionmaker(
             database_url=settings.DATABASE_URL,
             pool_size=1,
@@ -358,25 +209,41 @@ async def fetch_symbol_data(
 
         async with SessionLocal() as session:
             try:
-                inserted_count, updated_count = await upsert_prices(
-                    session, rows_to_upsert, force_update=force
+                rows = await asyncio.wait_for(
+                    refresh_full_history(session, symbol),
+                    timeout=float(settings.CRON_FULL_HISTORY_TIMEOUT),
                 )
                 await session.commit()
-            except Exception:
+                
+                if rows > 0:
+                    logger.info(f"Upserted {rows} rows for {symbol}")
+                    return FetchJobResult(
+                        symbol=symbol,
+                        status="success",
+                        rows_fetched=rows,
+                        error=None,
+                    )
+                else:
+                    logger.warning(f"No data returned for {symbol}")
+                    return FetchJobResult(
+                        symbol=symbol,
+                        status="no_data",
+                        rows_fetched=0,
+                        error="No data available",
+                    )
+                    
+            except asyncio.TimeoutError:
+                await session.rollback()
+                logger.error(f"Timeout fetching {symbol}")
+                return FetchJobResult(
+                    symbol=symbol,
+                    status="failed",
+                    rows_fetched=0,
+                    error=f"Timeout after {settings.CRON_FULL_HISTORY_TIMEOUT}s",
+                )
+            except Exception as e:
                 await session.rollback()
                 raise
-
-            total_rows = inserted_count + updated_count
-            logger.info(
-                f"Upserted {total_rows} rows for {symbol} ({inserted_count} new, {updated_count} updated)"
-            )
-
-            return FetchJobResult(
-                symbol=symbol,
-                status="success",
-                rows_fetched=total_rows,
-                error=None,
-            )
 
     except Exception as e:
         logger.error(f"Error fetching {symbol}: {e}")

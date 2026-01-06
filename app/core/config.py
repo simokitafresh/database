@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     # Cache settings - optimized for daily stock data
     CACHE_TTL_SECONDS: int = 14400  # 4 hours (daily data doesn't change frequently)
     ENABLE_CACHE: bool = True
-    PREFETCH_SYMBOLS: str = "TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD"
+    PREFETCH_SYMBOLS: str = "TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD,GDX,QLD,SPXL"
     PREFETCH_INTERVAL_MINUTES: int = 5
 
     # Redis settings (Standard planで利用可能)

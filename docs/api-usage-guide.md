@@ -109,9 +109,9 @@ Behavior highlights:
 - Each call re-fetches the last 7 days (`YF_REFETCH_DAYS`) to incorporate late adjustments.
 - **Bulk Fetching**: Set `auto_fetch=false` to enable bulk read mode.
   - `auto_fetch=true`: Max 10 symbols, 50,000 rows (External API limit)
-  - `auto_fetch=false`: Max 100 symbols, 200,000 rows (DB-only limit)
+  - `auto_fetch=false`: Max 100 symbols, 400,000 rows (DB-only limit)
 
-**Important**: `GET /v1/prices` does **not** support pagination. For data exceeding 200,000 rows, use date range splitting:
+**Important**: `GET /v1/prices` does **not** support pagination. For data exceeding 400,000 rows, use date range splitting:
 ```python
 # Example: Fetching 100 symbols × 20 years (split by year)
 for year in range(2005, 2025):
@@ -693,8 +693,8 @@ SQLAlchemy async connection pooling is configured:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `DB_POOL_SIZE` | 5 | Base connections in pool |
-| `DB_MAX_OVERFLOW` | 5 | Additional connections allowed |
+| `DB_POOL_SIZE` | 10 | Base connections in pool |
+| `DB_MAX_OVERFLOW` | 10 | Additional connections allowed |
 | `DB_POOL_PRE_PING` | True | Health check before use |
 | `DB_POOL_RECYCLE` | 900s | Connection lifetime |
 
@@ -744,7 +744,7 @@ On application startup, frequently accessed symbols are preloaded into cache:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `PREFETCH_SYMBOLS` | `TQQQ,TECL,GLD,...` | Comma-separated list of symbols to prefetch |
+| `PREFETCH_SYMBOLS` | `TQQQ,TECL,GLD,XLU,^VIX,QQQ,SPY,TMV,TMF,LQD,GDX,QLD,SPXL` | 13 symbols prefetch |
 | `PREFETCH_INTERVAL_MINUTES` | 5 | Update interval (non-Supabase only) |
 
 **Supabase Environment**: Due to NullPool restrictions, prefetch runs **once at startup only** (no background periodic updates). This loads existing price data from DB into the in-memory cache without calling Yahoo Finance.
@@ -778,11 +778,11 @@ For ETL/batch processing systems, use this workflow:
 | Use Case | Endpoint | Parameters | Symbol Limit | Row Limit |
 |----------|----------|------------|--------------|----------|
 | Real-time display | `GET /v1/prices` | `auto_fetch=true` (default) | 10 | 50,000 |
-| Batch calculation | `GET /v1/prices` | `auto_fetch=false` | 100 | 200,000 |
+| Batch calculation | `GET /v1/prices` | `auto_fetch=false` | 100 | 400,000 |
 | Historical backfill | `POST /v1/fetch` | - | 100 | - |
 | Gap detection | `GET /v1/coverage` | - | - | - |
 
-### Handling Large Datasets (>200,000 rows)
+### Handling Large Datasets (>400,000 rows)
 Since `GET /v1/prices` lacks pagination, split requests by:
 
 1. **Date range** (recommended): Fetch year-by-year or quarter-by-quarter

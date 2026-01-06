@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
     
-    # Database connection pool settings - optimized for Standard plan
-    DB_POOL_SIZE: int = 5  # Increased from 2 to 5 for better concurrency
-    DB_MAX_OVERFLOW: int = 5  # Increased from 3 to 5
+    # Database connection pool settings - optimized for Direct connection
+    DB_POOL_SIZE: int = 10  # Increased from 5 to 10 for better concurrency
+    DB_MAX_OVERFLOW: int = 10  # Increased from 5 to 10
     DB_POOL_PRE_PING: bool = True
     DB_POOL_RECYCLE: int = 900  # 1800から900に変更
     DB_ECHO: bool = False
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     API_MAX_SYMBOLS_LOCAL: int = 100  # DB読み出し専用（新設）
     # Standard plan（1GB RAM）を考慮した上限値
     API_MAX_ROWS: int = 50000
-    API_MAX_ROWS_LOCAL: int = 200000  # DB読み出し専用（新設）
+    API_MAX_ROWS_LOCAL: int = 400000  # DB読み出し専用（200,000→400,000に拡大）
     YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
     YF_REQ_CONCURRENCY: int = 6  # Reduced from 8 for stability (rate limit is the actual bottleneck)
     # Rate limiting settings for Yahoo Finance API

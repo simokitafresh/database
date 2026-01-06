@@ -89,7 +89,7 @@ async def create_fetch_job_endpoint(
             date_to=request.date_to,
             interval=request.interval,
             force=request.force,
-            max_concurrency=4  # Increased: Direct/Session Pooler supports concurrent connections
+            max_concurrency=8  # Optimized: benchmark shows 8-20 optimal, using 8 for stability
         )
         
         return {

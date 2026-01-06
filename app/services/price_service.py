@@ -1,8 +1,8 @@
 """Service for managing price data retrieval and manipulation."""
 
 import logging
-import time
-from datetime import date, datetime, timezone
+from collections import defaultdict
+from datetime import date
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,46 +117,46 @@ class PriceService:
                     date_to=effective_to,
                     refetch_days=settings.YF_REFETCH_DAYS,
                 )
-        elif not auto_fetch:
-             await queries.ensure_coverage(
-                session=self.session,
-                symbols=symbols_list,
-                date_from=date_from,
-                date_to=effective_to,
-                refetch_days=settings.YF_REFETCH_DAYS,
-            )
+        # auto_fetch=False: skip coverage check, just retrieve from DB
 
-        # --- Retrieve Data ---
+        # --- Retrieve Data (BATCH query - not N+1) ---
         rows = []
-        cache_updates = {}
         
-        for symbol in uncached_symbols:
-            symbol_rows = await queries.get_prices_resolved(
+        if uncached_symbols:
+            # Single batch query for all uncached symbols
+            all_rows = await queries.get_prices_resolved(
                 session=self.session,
-                symbols=[symbol],
+                symbols=uncached_symbols,
                 date_from=date_from,
                 date_to=effective_to,
             )
-            rows.extend(symbol_rows)
+            rows.extend(all_rows)
             
-            if settings.ENABLE_CACHE and symbol_rows:
-                cache_key = f"prices:{symbol}:{date_from}:{effective_to}"
-                cache_updates[cache_key] = symbol_rows
-        
-        # --- Update Cache ---
-        if settings.ENABLE_CACHE and cache_updates:
-            try:
-                from app.services.cache import get_cache
-                cache = get_cache()
-                await cache.set_multi(cache_updates)
-                # Update batch cache key if we have full results now
-                # Re-construct full result set for batch cache
-                full_results = rows + cached_results
-                batch_cache_key = f"prices:batch:{','.join(sorted(symbols_list))}:{date_from}:{effective_to}"
-                await cache.set(batch_cache_key, full_results)
-                logger.debug(f"Batch cached {len(cache_updates)} symbol results")
-            except Exception as e:
-                logger.warning(f"Failed to batch cache updates: {e}")
+            # Update cache per symbol
+            if settings.ENABLE_CACHE and rows:
+                try:
+                    from app.services.cache import get_cache
+                    cache = get_cache()
+                    
+                    # Group rows by symbol for individual caching
+                    symbol_rows_map: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+                    for row in all_rows:
+                        symbol_rows_map[row["symbol"]].append(row)
+                    
+                    # Batch cache update
+                    cache_updates = {
+                        f"prices:{sym}:{date_from}:{effective_to}": sym_rows
+                        for sym, sym_rows in symbol_rows_map.items()
+                    }
+                    await cache.set_multi(cache_updates)
+                    
+                    # Update batch cache key
+                    full_results = rows + cached_results
+                    batch_cache_key = f"prices:batch:{','.join(sorted(symbols_list))}:{date_from}:{effective_to}"
+                    await cache.set(batch_cache_key, full_results)
+                    logger.debug(f"Batch cached {len(cache_updates)} symbol results")
+                except Exception as e:
+                    logger.warning(f"Failed to batch cache updates: {e}")
         
         if cached_results:
             rows.extend(cached_results)

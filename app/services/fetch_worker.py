@@ -26,7 +26,7 @@ async def process_fetch_job(
     date_to: date,
     interval: str = "1d",
     force: bool = False,
-    max_concurrency: int = 4,  # Increased: Direct/Session Pooler supports concurrent connections
+    max_concurrency: int = 8,  # Optimized: benchmark shows 8-20 optimal, using 8 for stability
 ) -> None:
     """
     Process a fetch job by downloading data for all symbols.

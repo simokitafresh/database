@@ -26,7 +26,7 @@ async def process_fetch_job(
     date_to: date,
     interval: str = "1d",
     force: bool = False,
-    max_concurrency: int = 1,  # Reduced to 1 for Supabase NullPool compatibility
+    max_concurrency: int = 4,  # Increased: Direct/Session Pooler supports concurrent connections
 ) -> None:
     """
     Process a fetch job by downloading data for all symbols.

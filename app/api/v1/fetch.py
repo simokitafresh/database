@@ -89,7 +89,7 @@ async def create_fetch_job_endpoint(
             date_to=request.date_to,
             interval=request.interval,
             force=request.force,
-            max_concurrency=1  # Reduced to 1 for Supabase NullPool compatibility
+            max_concurrency=4  # Increased: Direct/Session Pooler supports concurrent connections
         )
         
         return {

@@ -1,6 +1,5 @@
 import asyncio
 import sys
-import asyncio
 
 # Windows環境でpsycopgを使用する場合の設定
 if sys.platform == "win32":
@@ -29,11 +28,9 @@ async def lifespan(_: FastAPI):
         logger.info("Starting application...")
         
         # DB接続のウォームアップ（起動時に接続を確立）
-        is_supabase = "supabase.com" in settings.DATABASE_URL
         try:
             from app.api.deps import _sessionmaker_for
             from sqlalchemy import text
-            import asyncio
             
             SessionLocal = _sessionmaker_for(settings.DATABASE_URL)
             
@@ -54,9 +51,12 @@ async def lifespan(_: FastAPI):
         except Exception as e:
             logger.warning(f"DB warmup skipped: {e}")
         
-        # プリフェッチサービス開始（ENABLE_CACHEがTrueで、Supabase環境でない場合のみ）
-        # SupabaseのNullPool環境では並行処理が許可されていないため無効化
-        if settings.ENABLE_CACHE and not is_supabase:
+        # プリフェッチサービス開始
+        # Transaction Pooler（ポート6543）のみNullPool制限があるため軽量版を使用
+        # Direct接続やSession Pooler（5432）ではフルプリフェッチ可能
+        is_transaction_pooler = "pooler.supabase.com" in settings.DATABASE_URL and ":6543" in settings.DATABASE_URL
+        
+        if settings.ENABLE_CACHE and not is_transaction_pooler:
             try:
                 from app.services.prefetch_service import get_prefetch_service
                 prefetch_service = get_prefetch_service()
@@ -67,17 +67,17 @@ async def lifespan(_: FastAPI):
             except Exception as e:
                 logger.error(f"Failed to start prefetch service: {e}")
                 # エラーが起きてもアプリは起動させる
-        elif is_supabase and settings.ENABLE_CACHE:
-            # Supabase環境: 起動時1回だけの軽量キャッシュウォーム
+        elif is_transaction_pooler and settings.ENABLE_CACHE:
+            # Transaction Pooler環境: 起動時1回だけの軽量キャッシュウォーム
             try:
                 from app.services.prefetch_service import startup_cache_warm
                 symbols_str = settings.PREFETCH_SYMBOLS
                 if symbols_str:
                     symbols = [s.strip() for s in symbols_str.split(",") if s.strip()]
                     cached = await startup_cache_warm(symbols)
-                    logger.info(f"Supabase startup cache warm completed: {cached} symbols")
+                    logger.info(f"Transaction Pooler startup cache warm completed: {cached} symbols")
                 else:
-                    logger.info("Supabase environment: no PREFETCH_SYMBOLS configured")
+                    logger.info("Transaction Pooler environment: no PREFETCH_SYMBOLS configured")
             except Exception as e:
                 logger.warning(f"Startup cache warm failed (non-critical): {e}")
         else:

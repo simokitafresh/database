@@ -17,9 +17,8 @@ from app.db.engine import create_engine_and_sessionmaker
 logger = logging.getLogger(__name__)
 
 # Retry configuration for transient connection errors
-# Increased for Supabase Pooler stability
-MAX_SESSION_RETRIES = 5
-RETRY_DELAY_SECONDS = 0.5
+MAX_SESSION_RETRIES = 3  # Reduced: Direct/Session Pooler is more stable
+RETRY_DELAY_SECONDS = 0.3
 
 
 @lru_cache(maxsize=8)
@@ -62,6 +61,7 @@ async def _create_session_with_retry() -> AsyncSession:
     last_error: Exception | None = None
     
     for attempt in range(MAX_SESSION_RETRIES):
+        session = None
         try:
             session = SessionLocal()
             # Validate connection by executing a simple query
@@ -71,10 +71,11 @@ async def _create_session_with_retry() -> AsyncSession:
         except (SQLAlchemyError, Exception) as e:
             last_error = e
             # Clean up the failed session
-            try:
-                await session.close()
-            except Exception:
-                pass
+            if session:
+                try:
+                    await session.close()
+                except Exception:
+                    pass
             
             if _is_transient_error(e) and attempt < MAX_SESSION_RETRIES - 1:
                 wait_time = RETRY_DELAY_SECONDS * (attempt + 1)

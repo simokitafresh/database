@@ -51,10 +51,10 @@ def create_engine_and_sessionmaker(
 
     Args:
         database_url: Database URL including asyncpg driver.
-        pool_size: Number of connections to maintain in pool (default: 20)
-        max_overflow: Maximum overflow connections (default: 10)
+        pool_size: Number of connections to maintain in pool (default: 2)
+        max_overflow: Maximum overflow connections (default: 3)
         pool_pre_ping: Enable connection health checks (default: True)
-        pool_recycle: Connection recycle time in seconds (default: 3600)
+        pool_recycle: Connection recycle time in seconds (default: 900)
         echo: Enable SQL query logging (default: False)
 
     Returns:
@@ -82,18 +82,21 @@ def create_engine_and_sessionmaker(
         # are libpq parameters not supported by asyncpg.
         # asyncpg handles TCP keepalive at the OS level automatically.
 
-        # Use NullPool for cloud deployment with connection poolers
-        if "supabase.com" in database_url or "pgbouncer" in database_url.lower() or pool_size <= 1:
+        # Use NullPool only for Transaction Pooler (port 6543) or explicit PgBouncer
+        # Session Pooler (port 5432) and Direct connection support normal pooling
+        is_transaction_pooler = (
+            "pooler.supabase.com" in database_url and ":6543" in database_url
+        )
+        is_pgbouncer = "pgbouncer" in database_url.lower()
+        
+        if is_transaction_pooler or is_pgbouncer or pool_size <= 1:
             poolclass = NullPool
-            # NullPoolではpre_pingやrecycleは意味がなく、オーバーヘッドになるため無効化
             pool_pre_ping = False
             pool_recycle = -1
-
-        if "pooler.supabase.com" in database_url:
-            poolclass = NullPool
-            pool_pre_ping = False
-            pool_recycle = -1
-            logger.info("Using NullPool for Supabase Pooler mode")
+            logger.info("Using NullPool for Transaction Pooler/PgBouncer mode")
+        elif "supabase.com" in database_url:
+            # Session Pooler (port 5432) or Direct connection - normal pooling OK
+            logger.info("Using connection pool for Supabase (Session/Direct mode)")
         
     elif database_url.startswith("postgresql+psycopg://"):
         # psycopgドライバー（同期）の場合

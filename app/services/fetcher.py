@@ -17,6 +17,7 @@ from app.core.config import Settings
 from app.core.logging import error_context, get_error_metrics
 from app.core.rate_limit import get_rate_limiter, get_backoff, RateLimiter, ExponentialBackoff
 from app.services.data_cleaner import DataCleaner
+from app.services.market_hours import should_skip_today_data
 
 # yfinance の冗長な失敗ログ（"1 Failed download: ... possibly delisted" 等）を抑制
 logging.getLogger("yfinance").setLevel(logging.ERROR)
@@ -94,7 +95,12 @@ def _fetch_internal(
                 fetch_start = refetch_start
 
         # yfinanceのend引数は排他的なので、1日加算して包含的にする
-        safe_end = min(end, date.today())
+        # 市場オープン中は当日データをスキップ（不正確なclose価格を避けるため）
+        if should_skip_today_data():
+            safe_end = min(end, date.today() - timedelta(days=1))
+            logging.getLogger(__name__).debug("Market hours: skipping today's data")
+        else:
+            safe_end = min(end, date.today())
         fetch_end = safe_end + timedelta(days=1)
 
         rate_limiter = get_rate_limiter(settings)

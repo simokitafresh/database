@@ -15,7 +15,7 @@ pydantic-settings==2.0.3
 # Data Processing & Finance
 pandas==2.2.3
 numpy==2.3.2
-yfinance==0.2.65
+yfinance==0.2.66
 
 # Redis support (Standard plan)
 redis==6.4.0

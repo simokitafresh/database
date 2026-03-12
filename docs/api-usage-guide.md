@@ -234,8 +234,13 @@ Creates a job and schedules it for asynchronous execution.
 
 Request body:
 - `symbols` (list[str], 1-100, validated against `[\^A-Z0-9.-]{1,20}`)
-- `date_from` (date, not more than 20 years back)
-- `date_to` (date, same or after `date_from`, not in the future, max 10-year span)
+- `date_from` (date, not more than 20 years back) ⚠️ **Provider Hard Limit**
+- `date_to` (date, same or after `date_from`, not in the future, max 10-year span) ⚠️ **Provider Hard Limit**
+
+> [!IMPORTANT]
+> **20年 Lookback上限** および **10年 Date Span上限** は、データプロバイダー（Yahoo Finance）側のハード制限です。
+> これらはDM-Signal側の設定では緩和できません。30年以上のヒストリー取得は物理的に不可能です。
+> 詳細は「API Limits Reference」セクションを参照してください。
 - `interval` (`1d`, `1wk`, `1mo`, `3mo`, default `1d`)
 - `force` (bool, default `false`)
 - `priority` (`low`, `normal`, `high`, default `normal`)
@@ -872,5 +877,42 @@ curl "http://localhost:8000/v1/prices?symbols=AAPL&from=2024-01-01&to=2024-12-31
 - `app/schemas/maintenance.py` - Adjustment check/fix schemas
 - `app/schemas/economic.py` - Economic data schemas
 - Other schemas in `app/schemas/`
+
+## API Limits Reference
+
+この節では、Stock Data APIに適用されるすべての制限と、その緩和可否を一覧化します。
+
+### Provider Hard Limits (緩和不可)
+
+以下の制限はデータプロバイダー（Yahoo Finance）側で強制されるハード制限であり、DM-Signal側の設定では**緩和できません**。
+
+| 制限項目 | 上限値 | エラーコード | 備考 |
+|----------|--------|--------------|------|
+| **Lookback上限** | 20年 | `422` | `date_from` を現在から20年以上前に設定不可 |
+| **Date Span上限** | 10年 | `422` | 1回のリクエストで10年超のスパン指定不可 |
+
+> [!CAUTION]
+> **30年以上のヒストリー取得は物理的に不可能です。**
+> これはYahoo Finance APIの仕様であり、将来的にプロバイダー側でポリシー変更がない限り緩和されません。
+
+### DM-Signal Configurable Limits (調整可能)
+
+以下の制限はDM-Signal側の設定で調整可能です。Project 077（2026年1月）で既に最大化されています。
+
+| 制限項目 | 現在値 | 設定箇所 | モード |
+|----------|--------|----------|--------|
+| **Bulk Mode行数上限** | 400,000行 | `settings.API_BULK_MAX_ROWS` | `auto_fetch=false` |
+| **Real-time Mode行数上限** | 50,000行 | `settings.API_MAX_ROWS` | `auto_fetch=true` |
+| **Bulk Modeシンボル数上限** | 100 | `settings.API_MAX_SYMBOLS` | `auto_fetch=false` |
+| **Real-time Modeシンボル数上限** | 10 | `settings.API_MAX_SYMBOLS_REALTIME` | `auto_fetch=true` |
+
+### Rate Limits (Yahoo Finance)
+
+| パラメータ | 値 | 説明 |
+|------------|-----|------|
+| Requests/Sec | 2.0 | Token bucket rate |
+| Burst Size | 10 | 最大バースト容量 |
+| Max Backoff | 60s | 最大リトライ遅延 |
+| Concurrency | 6 | 同時Yahoo Finance接続数 |
 
 Keep this guide alongside the canonical specs (`architecture.md`, `README.md`, `docs/implementation-task-list.md`, `speedup.md`) so automated agents remain aligned with production behavior.

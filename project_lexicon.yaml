@@ -1,0 +1,7 @@
+version: '1.0'
+node_vocabulary: []
+naming_conventions: []
+design_principles:
+- Review suggested lexicons before treating project conventions as approved.
+extends:
+- shogun_core

@@ -188,9 +188,13 @@ async def ensure_coverage(
     """Ensure price data coverage for symbols.
 
     For each symbol the function acquires an advisory lock, checks coverage
-    with weekday-aware gap detection and fetches the minimal range required to
-    bring the database up to date including ``refetch_days`` worth of recent
-    history.
+    with weekday-aware gap detection and fetches the symbol's known full
+    period whenever a refresh is due, so split/dividend adjustment factors
+    never go stale for older rows.
+
+    Note: ``refetch_days`` is accepted for call-site compatibility but no
+    longer bounds the refetch window — full-period refetch replaced it to
+    guarantee adjustment uniformity (cmd_3685).
 
     Note: This function does not manage transactions. The caller should
     ensure proper transaction management.
@@ -225,16 +229,18 @@ async def ensure_coverage(
         fetch_ranges = []
         
 
-        # 1) 最新データの再取得（refetch_days分のみ、ただし最新データが新しい場合はスキップ）
+        # 1) 既知の全期間を再取得（配当・分割調整係数の凍結ムラを防ぐため、
+        #    直近refetch_days日ではなくsymbolの既知全期間を毎回再取得する。
+        #    ただし最新データが新しい場合はスキップ）
         if last_date and date_to >= last_date:
             # 最新データが1日以内の場合は再取得をスキップ（市場時間を考慮）
             days_since_last = (date_to - last_date).days
             if days_since_last > 1:  # 1日より古い場合のみ再取得
-                refetch_start = max(date_from, last_date - timedelta(days=refetch_days))
+                refetch_start = min(first_date, date_from) if first_date else date_from
                 if refetch_start <= date_to:
                     fetch_ranges.append((refetch_start, date_to))
                     logger.debug(
-                        "adding recent data refetch range",
+                        "adding full-period refetch range",
                         extra=dict(
                             symbol=symbol,
                             start=str(refetch_start),
@@ -537,7 +543,9 @@ async def ensure_coverage_parallel(
     symbols: List of symbols
     date_from: Start date
     date_to: End date  
-    refetch_days: Number of days to refetch for recent data
+    refetch_days: Accepted for call-site compatibility but no longer bounds
+        the refetch window — full-period refetch replaced it to guarantee
+        adjustment uniformity (cmd_3685). See ``ensure_coverage``.
     on_events: Optional callback for event processing
     """
     # Lock to serialize database access on the shared session
@@ -585,11 +593,11 @@ async def ensure_coverage_parallel(
                 # 3. Determine fetch ranges
                 fetch_ranges = []
                 
-                # Recent data refetch
+                # Full-period refetch (adjustment uniformity — see ensure_coverage)
                 if last_date and date_to >= last_date:
                     days_since_last = (date_to - last_date).days
                     if days_since_last > 1:
-                        refetch_start = max(date_from, last_date - timedelta(days=refetch_days))
+                        refetch_start = min(first_date, date_from) if first_date else date_from
                         if refetch_start <= date_to:
                             fetch_ranges.append((refetch_start, date_to))
                 

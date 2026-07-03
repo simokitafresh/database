@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Standard plan（1GB RAM）を考慮した上限値
     API_MAX_ROWS: int = 50000
     API_MAX_ROWS_LOCAL: int = 400000  # DB読み出し専用（200,000→400,000に拡大）
-    YF_REFETCH_DAYS: int = 7  # Reduced from 30 to minimize unnecessary re-fetching
+    YF_REFETCH_DAYS: int = 7  # No longer bounds the coverage refetch window (full-period refetch since cmd_3685); kept for ensure_coverage* call-site compat
     YF_REQ_CONCURRENCY: int = 6  # Reduced from 8 for stability (rate limit is the actual bottleneck)
     # Rate limiting settings for Yahoo Finance API
     YF_RATE_LIMIT_REQUESTS_PER_SECOND: float = 2.0  # Token bucket rate

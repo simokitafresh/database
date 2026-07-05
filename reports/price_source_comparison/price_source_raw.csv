@@ -1,0 +1,148 @@
+symbol,date,source,open,close,adj_close,volume,status,note
+LQD,2026-04-30,alpaca,108.920000,108.860000,,2492904,ok,feed=iex adjustment=raw
+LQD,2026-05-29,alpaca,109.350000,109.370000,,3194448,ok,feed=iex adjustment=raw
+LQD,2026-06-30,alpaca,109.515000,109.060000,,2831752,ok,feed=iex adjustment=raw
+LQD,2026-04-30,eodhd,108.890000,108.850000,107.637900,45530727,ok,ticker=LQD.US
+LQD,2026-05-29,eodhd,109.390000,109.360000,108.565700,26551320,ok,ticker=LQD.US
+LQD,2026-06-30,eodhd,109.500000,109.070000,108.688000,32665400,ok,ticker=LQD.US
+LQD,2026-04-30,tiingo,108.890000,108.850000,107.637953,45530729,ok,ticker=lqd
+LQD,2026-05-29,tiingo,109.390000,109.360000,108.565035,26551318,ok,ticker=lqd
+LQD,2026-06-30,tiingo,109.500000,109.070000,108.687668,32665351,ok,ticker=lqd
+LQD,2026-04-30,stockdata_yfinance,108.084963,,108.045258,45530700,ok,ticker=LQD auto_adjust=True
+LQD,2026-05-29,stockdata_yfinance,109.006883,,108.976990,26551200,ok,ticker=LQD auto_adjust=True
+LQD,2026-06-30,stockdata_yfinance,109.116498,,108.688004,32665400,ok,ticker=LQD auto_adjust=True
+TECL,2026-04-30,alpaca,146.350000,146.470000,,30426,ok,feed=iex adjustment=raw
+TECL,2026-05-29,alpaca,239.165000,245.610000,,33302,ok,feed=iex adjustment=raw
+TECL,2026-06-30,alpaca,214.815000,231.030000,,5897,ok,feed=iex adjustment=raw
+TECL,2026-04-30,eodhd,146.680000,146.260000,146.132600,1347898,ok,ticker=TECL.US
+TECL,2026-05-29,eodhd,239.160000,245.390000,245.176200,1402862,ok,ticker=TECL.US
+TECL,2026-06-30,eodhd,214.500000,230.760000,230.760000,709900,ok,ticker=TECL.US
+TECL,2026-04-30,tiingo,146.680000,146.260000,146.114747,1347898,ok,ticker=tecl
+TECL,2026-05-29,tiingo,239.160000,245.390000,245.146300,1402862,ok,ticker=tecl
+TECL,2026-06-30,tiingo,214.500000,230.760000,230.760000,709874,ok,ticker=tecl
+TECL,2026-04-30,stockdata_yfinance,146.552185,,146.132553,1347900,ok,ticker=TECL auto_adjust=True
+TECL,2026-05-29,stockdata_yfinance,238.951626,,245.176193,1400000,ok,ticker=TECL auto_adjust=True
+TECL,2026-06-30,stockdata_yfinance,214.500000,,230.759995,709900,ok,ticker=TECL auto_adjust=True
+XLU,2026-04-30,alpaca,45.970000,46.840000,,2093355,ok,feed=iex adjustment=raw
+XLU,2026-05-29,alpaca,44.670000,44.420000,,1466720,ok,feed=iex adjustment=raw
+XLU,2026-06-30,alpaca,45.885000,45.340000,,1183467,ok,feed=iex adjustment=raw
+XLU,2026-04-30,eodhd,45.850000,46.850000,46.552500,22378520,ok,ticker=XLU.US
+XLU,2026-05-29,eodhd,44.670000,44.420000,44.137900,23049820,ok,ticker=XLU.US
+XLU,2026-06-30,eodhd,45.860000,45.340000,45.340000,18906800,ok,ticker=XLU.US
+XLU,2026-04-30,tiingo,45.850000,46.850000,46.553921,22378516,ok,ticker=xlu
+XLU,2026-05-29,tiingo,44.670000,44.420000,44.139278,23049824,ok,ticker=xlu
+XLU,2026-06-30,tiingo,45.860000,45.340000,45.340000,18906764,ok,ticker=xlu
+XLU,2026-04-30,stockdata_yfinance,45.559083,,46.552738,22378500,ok,ticker=XLU auto_adjust=True
+XLU,2026-05-29,stockdata_yfinance,44.386567,,44.138153,23048500,ok,ticker=XLU auto_adjust=True
+XLU,2026-06-30,stockdata_yfinance,45.860001,,45.340000,18906800,ok,ticker=XLU auto_adjust=True
+QQQ,2026-04-30,alpaca,665.375000,667.610000,,871932,ok,feed=iex adjustment=raw
+QQQ,2026-05-29,alpaca,737.760000,738.210000,,738280,ok,feed=iex adjustment=raw
+QQQ,2026-06-30,alpaca,724.370000,736.070000,,745029,ok,feed=iex adjustment=raw
+QQQ,2026-04-30,eodhd,665.350000,667.740000,667.003900,40622230,ok,ticker=QQQ.US
+QQQ,2026-05-29,eodhd,737.840000,738.310000,737.496100,37541672,ok,ticker=QQQ.US
+QQQ,2026-06-30,eodhd,724.180000,736.400000,736.400000,42121800,ok,ticker=QQQ.US
+QQQ,2026-04-30,tiingo,665.350000,667.740000,667.004718,40622226,ok,ticker=qqq
+QQQ,2026-05-29,tiingo,737.840000,738.310000,737.497009,37541668,ok,ticker=qqq
+QQQ,2026-06-30,tiingo,724.180000,736.400000,736.400000,42121829,ok,ticker=qqq
+QQQ,2026-04-30,stockdata_yfinance,664.619567,,667.006958,40622200,ok,ticker=QQQ auto_adjust=True
+QQQ,2026-05-29,stockdata_yfinance,737.030057,,737.499512,37541700,ok,ticker=QQQ auto_adjust=True
+QQQ,2026-06-30,stockdata_yfinance,724.179993,,736.400024,42121800,ok,ticker=QQQ auto_adjust=True
+GLD,2026-04-30,alpaca,425.220000,423.780000,,97626,ok,feed=iex adjustment=raw
+GLD,2026-05-29,alpaca,415.610000,417.180000,,164180,ok,feed=iex adjustment=raw
+GLD,2026-06-30,alpaca,369.250000,368.380000,,78403,ok,feed=iex adjustment=raw
+GLD,2026-04-30,eodhd,425.340000,423.660000,423.660000,6732800,ok,ticker=GLD.US
+GLD,2026-05-29,eodhd,415.620000,417.120000,417.120000,7705700,ok,ticker=GLD.US
+GLD,2026-06-30,eodhd,369.220000,368.380000,368.380000,5302100,ok,ticker=GLD.US
+GLD,2026-04-30,tiingo,425.340000,423.660000,423.660000,6732811,ok,ticker=gld
+GLD,2026-05-29,tiingo,415.620000,417.120000,417.120000,7705706,ok,ticker=gld
+GLD,2026-06-30,tiingo,369.220000,368.380000,368.380000,5302053,ok,ticker=gld
+GLD,2026-04-30,stockdata_yfinance,425.339996,,423.660004,6732800,ok,ticker=GLD auto_adjust=True
+GLD,2026-05-29,stockdata_yfinance,415.619995,,417.119995,7705700,ok,ticker=GLD auto_adjust=True
+GLD,2026-06-30,stockdata_yfinance,369.220001,,368.380005,5302100,ok,ticker=GLD auto_adjust=True
+SPY,2026-04-30,alpaca,714.670000,718.410000,,1976926,ok,feed=iex adjustment=raw
+SPY,2026-05-29,alpaca,755.865000,756.340000,,1674069,ok,feed=iex adjustment=raw
+SPY,2026-06-30,alpaca,741.300000,746.650000,,1509022,ok,feed=iex adjustment=raw
+SPY,2026-04-30,eodhd,714.630000,718.660000,716.813800,67240900,ok,ticker=SPY.US
+SPY,2026-05-29,eodhd,755.900000,756.480000,754.536600,55075700,ok,ticker=SPY.US
+SPY,2026-06-30,eodhd,741.290000,746.770000,746.770000,55626000,ok,ticker=SPY.US
+SPY,2026-04-30,tiingo,714.630000,718.660000,716.832721,67240949,ok,ticker=spy
+SPY,2026-05-29,tiingo,755.900000,756.480000,754.556559,55075739,ok,ticker=spy
+SPY,2026-06-30,tiingo,741.290000,746.770000,746.770000,55626035,ok,ticker=spy
+SPY,2026-04-30,stockdata_yfinance,712.793681,,716.813293,67240900,ok,ticker=SPY auto_adjust=True
+SPY,2026-05-29,stockdata_yfinance,753.957667,,754.536133,55075700,ok,ticker=SPY auto_adjust=True
+SPY,2026-06-30,stockdata_yfinance,741.289978,,746.770020,55626000,ok,ticker=SPY auto_adjust=True
+TQQQ,2026-04-30,alpaca,62.890000,63.490000,,1382116,ok,feed=iex adjustment=raw
+TQQQ,2026-05-29,alpaca,84.380000,84.540000,,1099204,ok,feed=iex adjustment=raw
+TQQQ,2026-06-30,alpaca,77.300000,80.990000,,853081,ok,feed=iex adjustment=raw
+TQQQ,2026-04-30,eodhd,62.890000,63.540000,63.393800,81042700,ok,ticker=TQQQ.US
+TQQQ,2026-05-29,eodhd,84.410000,84.560000,84.365500,67644100,ok,ticker=TQQQ.US
+TQQQ,2026-06-30,eodhd,77.240000,81.000000,81.000000,58466200,ok,ticker=TQQQ.US
+TQQQ,2026-04-30,tiingo,62.890000,63.540000,63.391916,81042682,ok,ticker=tqqq
+TQQQ,2026-05-29,tiingo,84.410000,84.560000,84.362928,67644084,ok,ticker=tqqq
+TQQQ,2026-06-30,tiingo,77.240000,81.000000,81.000000,58466178,ok,ticker=tqqq
+TQQQ,2026-04-30,stockdata_yfinance,62.889999,,63.540001,81042700,ok,ticker=TQQQ auto_adjust=True
+TQQQ,2026-05-29,stockdata_yfinance,84.410004,,84.559998,67644100,ok,ticker=TQQQ auto_adjust=True
+TQQQ,2026-06-30,stockdata_yfinance,77.239998,,81.000000,58466200,ok,ticker=TQQQ auto_adjust=True
+TMV,2026-04-30,alpaca,38.400000,38.730000,,15720,ok,feed=iex adjustment=raw
+TMV,2026-05-29,alpaca,38.360000,38.500000,,22280,ok,feed=iex adjustment=raw
+TMV,2026-06-30,alpaca,36.250000,37.100000,,13781,ok,feed=iex adjustment=raw
+TMV,2026-04-30,eodhd,38.330000,38.710000,38.462900,614225,ok,ticker=TMV.US
+TMV,2026-05-29,eodhd,38.310000,38.400000,38.154900,704747,ok,ticker=TMV.US
+TMV,2026-06-30,eodhd,36.230000,37.060000,37.060000,881200,ok,ticker=TMV.US
+TMV,2026-04-30,tiingo,38.330000,38.710000,38.461628,614225,ok,ticker=tmv
+TMV,2026-05-29,tiingo,38.310000,38.400000,38.153617,704747,ok,ticker=tmv
+TMV,2026-06-30,tiingo,36.230000,37.060000,37.060000,881253,ok,ticker=tmv
+TMV,2026-04-30,stockdata_yfinance,38.085364,,38.462936,614200,ok,ticker=TMV auto_adjust=True
+TMV,2026-05-29,stockdata_yfinance,38.065493,,38.154919,704200,ok,ticker=TMV auto_adjust=True
+TMV,2026-06-30,stockdata_yfinance,36.230000,,37.060001,881200,ok,ticker=TMV auto_adjust=True
+GDX,2026-04-30,alpaca,88.950000,88.300000,,1102770,ok,feed=iex adjustment=raw
+GDX,2026-05-29,alpaca,87.215000,89.390000,,1267715,ok,feed=iex adjustment=raw
+GDX,2026-06-30,alpaca,75.510000,75.410000,,1139290,ok,feed=iex adjustment=raw
+GDX,2026-04-30,eodhd,88.900000,88.290000,88.290000,23142400,ok,ticker=GDX.US
+GDX,2026-05-29,eodhd,87.380000,89.490000,89.490000,22277000,ok,ticker=GDX.US
+GDX,2026-06-30,eodhd,75.390000,75.450000,75.450000,16874800,ok,ticker=GDX.US
+GDX,2026-04-30,tiingo,88.900000,88.290000,88.290000,23142365,ok,ticker=gdx
+GDX,2026-05-29,tiingo,87.380000,89.490000,89.490000,22277041,ok,ticker=gdx
+GDX,2026-06-30,tiingo,75.390000,75.450000,75.450000,16874835,ok,ticker=gdx
+GDX,2026-04-30,stockdata_yfinance,88.900002,,88.290001,23142400,ok,ticker=GDX auto_adjust=True
+GDX,2026-05-29,stockdata_yfinance,87.379997,,89.489998,22277000,ok,ticker=GDX auto_adjust=True
+GDX,2026-06-30,stockdata_yfinance,75.389999,,75.449997,16874800,ok,ticker=GDX auto_adjust=True
+QLD,2026-04-30,alpaca,80.420000,81.230000,,39162,ok,feed=iex adjustment=raw
+QLD,2026-05-29,alpaca,98.500000,98.485000,,31524,ok,feed=iex adjustment=raw
+QLD,2026-06-30,alpaca,93.745000,96.780000,,25705,ok,feed=iex adjustment=raw
+QLD,2026-04-30,eodhd,80.540000,81.050000,80.995800,4916100,ok,ticker=QLD.US
+QLD,2026-05-29,eodhd,98.390000,98.460000,98.394200,4821500,ok,ticker=QLD.US
+QLD,2026-06-30,eodhd,93.690000,96.760000,96.760000,3942000,ok,ticker=QLD.US
+QLD,2026-04-30,tiingo,80.540000,81.050000,80.995581,4916108,ok,ticker=qld
+QLD,2026-05-29,tiingo,98.390000,98.460000,98.393892,4821467,ok,ticker=qld
+QLD,2026-06-30,tiingo,93.690000,96.760000,96.760000,3942048,ok,ticker=qld
+QLD,2026-04-30,stockdata_yfinance,80.486143,,80.995804,4916100,ok,ticker=QLD auto_adjust=True
+QLD,2026-05-29,stockdata_yfinance,98.324205,,98.394157,4821500,ok,ticker=QLD auto_adjust=True
+QLD,2026-06-30,stockdata_yfinance,93.690002,,96.760002,3942000,ok,ticker=QLD auto_adjust=True
+TMF,2026-04-30,alpaca,35.120000,34.800000,,77515,ok,feed=iex adjustment=raw
+TMF,2026-05-29,alpaca,35.055000,34.960000,,118776,ok,feed=iex adjustment=raw
+TMF,2026-06-30,alpaca,36.420000,35.520000,,230925,ok,feed=iex adjustment=raw
+TMF,2026-04-30,eodhd,35.150000,34.820000,34.462700,3777900,ok,ticker=TMF.US
+TMF,2026-05-29,eodhd,35.040000,34.940000,34.581500,3437900,ok,ticker=TMF.US
+TMF,2026-06-30,eodhd,36.410000,35.550000,35.550000,3286900,ok,ticker=TMF.US
+TMF,2026-04-30,tiingo,35.150000,34.820000,34.464246,3777933,ok,ticker=tmf
+TMF,2026-05-29,tiingo,35.040000,34.940000,34.583020,3446930,ok,ticker=tmf
+TMF,2026-06-30,tiingo,36.410000,35.550000,35.550000,3286857,ok,ticker=tmf
+TMF,2026-04-30,stockdata_yfinance,34.789412,,34.462795,3777900,ok,ticker=TMF auto_adjust=True
+TMF,2026-05-29,stockdata_yfinance,34.680542,,34.581566,3437900,ok,ticker=TMF auto_adjust=True
+TMF,2026-06-30,stockdata_yfinance,36.410000,,35.549999,3286900,ok,ticker=TMF auto_adjust=True
+VIX,2026-04-30,alpaca,,,,,unsupported,VIX index is not a stock bar symbol on Alpaca
+VIX,2026-05-29,alpaca,,,,,unsupported,VIX index is not a stock bar symbol on Alpaca
+VIX,2026-06-30,alpaca,,,,,unsupported,VIX index is not a stock bar symbol on Alpaca
+VIX,2026-04-30,eodhd,18.680000,16.890000,16.890000,0,ok,ticker=VIX.INDX
+VIX,2026-05-29,eodhd,15.810000,15.320000,15.320000,0,ok,ticker=VIX.INDX
+VIX,2026-06-30,eodhd,17.540000,16.450000,16.450000,0,ok,ticker=VIX.INDX
+VIX,2026-04-30,tiingo,,,,,error,"HTTPStatusError: Client error '404 Not Found' for url 'https://api.tiingo.com/tiingo/daily/%5EVIX/prices?startDate=2026-04-30&endDate=2026-06-30&token=<redacted>'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+VIX,2026-05-29,tiingo,,,,,error,"HTTPStatusError: Client error '404 Not Found' for url 'https://api.tiingo.com/tiingo/daily/%5EVIX/prices?startDate=2026-04-30&endDate=2026-06-30&token=<redacted>'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+VIX,2026-06-30,tiingo,,,,,error,"HTTPStatusError: Client error '404 Not Found' for url 'https://api.tiingo.com/tiingo/daily/%5EVIX/prices?startDate=2026-04-30&endDate=2026-06-30&token=<redacted>'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+VIX,2026-04-30,stockdata_yfinance,18.680000,,16.889999,0,ok,ticker=^VIX auto_adjust=True
+VIX,2026-05-29,stockdata_yfinance,15.810000,,15.320000,0,ok,ticker=^VIX auto_adjust=True
+VIX,2026-06-30,stockdata_yfinance,17.540001,,16.450001,0,ok,ticker=^VIX auto_adjust=True

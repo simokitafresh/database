@@ -12,23 +12,29 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     APP_ENV: str = "development"
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
-    
+    DATABASE_URL: str = (
+        "postgresql+psycopg://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+    )
+
     # Database connection pool settings - optimized for Direct connection
     DB_POOL_SIZE: int = 10  # Increased from 5 to 10 for better concurrency
     DB_MAX_OVERFLOW: int = 10  # Increased from 5 to 10
     DB_POOL_PRE_PING: bool = True
     DB_POOL_RECYCLE: int = 900  # 1800から900に変更
     DB_ECHO: bool = False
-    
+
     # API settings
     API_MAX_SYMBOLS: int = 10
     API_MAX_SYMBOLS_LOCAL: int = 100  # DB読み出し専用（新設）
     # Standard plan（1GB RAM）を考慮した上限値
     API_MAX_ROWS: int = 50000
     API_MAX_ROWS_LOCAL: int = 400000  # DB読み出し専用（200,000→400,000に拡大）
-    YF_REFETCH_DAYS: int = 7  # No longer bounds the coverage refetch window (full-period refetch since cmd_3685); kept for ensure_coverage* call-site compat
-    YF_REQ_CONCURRENCY: int = 6  # Reduced from 8 for stability (rate limit is the actual bottleneck)
+    # No longer bounds coverage refetch (full-period refetch since cmd_3685).
+    # Kept for ensure_coverage* call-site compatibility.
+    YF_REFETCH_DAYS: int = 7
+    YF_REQ_CONCURRENCY: int = (
+        6  # Reduced from 8 for stability (rate limit is the actual bottleneck)
+    )
     # Rate limiting settings for Yahoo Finance API
     YF_RATE_LIMIT_REQUESTS_PER_SECOND: float = 2.0  # Token bucket rate
     YF_RATE_LIMIT_BURST_SIZE: int = 10  # Token bucket capacity
@@ -40,26 +46,30 @@ class Settings(BaseSettings):
     FETCH_BACKOFF_MAX_SECONDS: float = 8.0
     CORS_ALLOW_ORIGINS: str = ""
     LOG_LEVEL: str = "INFO"
-    
+
     # Cron Job Settings
     CRON_SECRET_TOKEN: str = ""
     CRON_BATCH_SIZE: int = 50
     CRON_UPDATE_DAYS: int = 7
-    CRON_FULL_HISTORY_TIMEOUT: int = 300  # Timeout for full history fetch (seconds), adjust after observing actual times
+    CRON_FULL_HISTORY_TIMEOUT: int = (
+        300  # Timeout for full history fetch (seconds), adjust after observing actual times
+    )
     PRICE_VERIFICATION_CORE_SYMBOLS: str = "LQD,TECL,XLU,QQQ,GLD,SPY,TQQQ,TMV,GDX,QLD,TMF"
     PRICE_VERIFICATION_TOLERANCE: float = 0.01
     EODHD_API_TOKEN: Optional[str] = None
     TIINGO_API_TOKEN: Optional[str] = None
+    ALPACA_API_KEY_ID: Optional[str] = None
+    ALPACA_API_SECRET_KEY: Optional[str] = None
     NTFY_TOPIC: Optional[str] = None
 
     # FRED API Settings
     FRED_API_KEY: Optional[str] = None
-    
+
     # Auto-registration settings
     ENABLE_AUTO_REGISTRATION: bool = True
     AUTO_REGISTER_TIMEOUT: int = 15  # Total timeout for registration process
-    YF_VALIDATE_TIMEOUT: int = 10    # Timeout for Yahoo Finance validation
-    
+    YF_VALIDATE_TIMEOUT: int = 10  # Timeout for Yahoo Finance validation
+
     # Fetch Job Settings
     FETCH_JOB_MAX_SYMBOLS: int = 100
     FETCH_JOB_MAX_DAYS: int = 3650
@@ -90,7 +100,9 @@ class Settings(BaseSettings):
     ADJUSTMENT_CHECK_ENABLED: bool = True
     ADJUSTMENT_MIN_THRESHOLD_PCT: float = 0.001  # Minimum detection threshold (%)
     ADJUSTMENT_SAMPLE_POINTS: int = 10  # Number of sample points to check
-    ADJUSTMENT_MIN_DATA_AGE_DAYS: int = 7  # Only check data older than this (reduced from 60 to catch recent splits)
+    ADJUSTMENT_MIN_DATA_AGE_DAYS: int = (
+        7  # Only check data older than this (reduced from 60 to catch recent splits)
+    )
     ADJUSTMENT_AUTO_FIX: bool = True  # Auto-fix detected issues (False = report only)
     ADJUSTMENT_CHECK_FULL_HISTORY: bool = True  # Check entire history, not just old data
 
@@ -104,7 +116,7 @@ settings = Settings()
 
 def get_settings() -> Settings:
     """Get the application settings instance.
-    
+
     Returns:
         Settings: The application settings singleton.
     """

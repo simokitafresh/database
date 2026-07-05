@@ -17,20 +17,25 @@ class CronDailyUpdateRequest(BaseModel):
     )
     date_to: Optional[str] = Field(None, description="End date (YYYY-MM-DD), defaults to yesterday")
     check_adjustments: bool = Field(
-        default=True,
-        description="If True, run adjustment check after data update"
+        default=True, description="If True, run adjustment check after data update"
     )
     auto_fix_adjustments: bool = Field(
         default=True,
-        description="If True and check_adjustments=True, auto-fix detected adjustments"
+        description="If True and check_adjustments=True, auto-fix detected adjustments",
     )
     run_price_source_verification: bool = Field(
-        default=True,
-        description="If True, compare EODHD and Tiingo closes for core symbols"
+        default=True, description="If True, compare EODHD and Tiingo closes for core symbols"
     )
     confirm_monthly_inputs: bool = Field(
         default=False,
-        description="If True, verify previous month-end prices exist for all core symbols"
+        description="If True, verify previous month-end prices exist for all core symbols",
+    )
+    run_raw_price_pipeline: bool = Field(
+        default=False,
+        description=(
+            "If True, ingest raw source prices and derive adjusted prices "
+            "from confirmed events"
+        ),
     )
 
     @validator("date_from", "date_to", pre=True)
@@ -70,6 +75,9 @@ class CronDailyUpdateResponse(BaseModel):
     )
     input_confirmation: Optional[Dict] = Field(
         None, description="Previous month-end input confirmation status if performed"
+    )
+    raw_price_pipeline: Optional[Dict] = Field(
+        None, description="Raw source ingestion and deterministic adjustment results if run"
     )
 
 

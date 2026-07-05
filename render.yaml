@@ -44,10 +44,10 @@ services:
       # etc.
 
   - type: cron
-    name: stockdata-daily-update
+    name: stockdata-daily-update-primary
     runtime: docker
     dockerfilePath: ./docker/Dockerfile.cron
-    schedule: "0 14 * * 1-5"  # 14:00 UTC (23:00 JST) on weekdays
+    schedule: "0 23 * * 1-5"  # 23:00 UTC (08:00 JST) on weekdays
     envVars:
       - key: RENDER_EXTERNAL_URL
         fromService:
@@ -56,3 +56,21 @@ services:
           property: host
       - key: CRON_SECRET_TOKEN
         sync: false
+      - key: CRON_REQUEST_BODY
+        value: '{"run_price_source_verification": true, "confirm_monthly_inputs": false}'
+
+  - type: cron
+    name: stockdata-daily-update-confirmed
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.cron
+    schedule: "0 8 * * 1-5"  # 08:00 UTC (17:00 JST) on weekdays
+    envVars:
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          name: stockdata-api
+          type: web
+          property: host
+      - key: CRON_SECRET_TOKEN
+        sync: false
+      - key: CRON_REQUEST_BODY
+        value: '{"run_price_source_verification": true, "confirm_monthly_inputs": true}'

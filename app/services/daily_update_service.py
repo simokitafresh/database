@@ -13,6 +13,11 @@ from app.core.config import settings
 from app.db.queries import list_symbols
 from app.services.coverage_service import refresh_full_history
 from app.schemas.cron import CronDailyUpdateRequest, CronDailyUpdateResponse
+from app.services.price_source_verification import (
+    confirm_previous_month_inputs,
+    previous_business_day,
+    verify_eodhd_tiingo_closes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +102,10 @@ class DailyUpdateService:
                 len(all_symbols), success_count, failed_symbols
             )
             
-            # Adjustment check
+            # Post-update checks
             adjustment_result = await self._run_adjustment_check(request)
+            price_source_verification = await self._run_price_source_verification(request, date_to)
+            input_confirmation = await self._run_input_confirmation(request)
             
             return CronDailyUpdateResponse(
                 status=final_status,
@@ -111,6 +118,8 @@ class DailyUpdateService:
                 success_count=success_count,
                 failed_symbols=failed_symbols if failed_symbols else None,
                 adjustment_check=adjustment_result,
+                price_source_verification=price_source_verification,
+                input_confirmation=input_confirmation,
             )
             
         except HTTPException:
@@ -335,6 +344,25 @@ class DailyUpdateService:
                 logger.error(f"Adjustment check failed: {e}")
                 return {"error": str(e)}
         return None
+
+    async def _run_price_source_verification(self, request, date_to):
+        if not request.run_price_source_verification:
+            return None
+        try:
+            trade_date = date_to or previous_business_day(date.today())
+            return await verify_eodhd_tiingo_closes(trade_date)
+        except Exception as e:
+            logger.error(f"Price source verification failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def _run_input_confirmation(self, request):
+        if not request.confirm_monthly_inputs:
+            return None
+        try:
+            return await confirm_previous_month_inputs(self.session)
+        except Exception as e:
+            logger.error(f"Monthly input confirmation failed: {e}")
+            return {"status": "error", "error": str(e)}
 
     async def _determine_economic_date_range(self, request):
         date_from = self._calculate_date_from(request.date_from) if request.date_from else None

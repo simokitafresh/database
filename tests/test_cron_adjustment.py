@@ -195,9 +195,13 @@ class TestDailyUpdateWithAdjustmentCheck:
             dry_run=True,
             check_adjustments=True,
             auto_fix_adjustments=True,
+            run_price_source_verification=True,
+            confirm_monthly_inputs=True,
         )
         assert request.check_adjustments is True
         assert request.auto_fix_adjustments is True
+        assert request.run_price_source_verification is True
+        assert request.confirm_monthly_inputs is True
         
         # Response has new field
         response = CronDailyUpdateResponse(
@@ -208,9 +212,13 @@ class TestDailyUpdateWithAdjustmentCheck:
             date_range={"from": "2024-01-01", "to": "2024-01-31"},
             timestamp="2024-01-15T10:00:00",
             adjustment_check={"scanned": 10, "needs_refresh_count": 1},
+            price_source_verification={"status": "success"},
+            input_confirmation={"status": "confirmed"},
         )
         assert response.adjustment_check is not None
         assert response.adjustment_check["scanned"] == 10
+        assert response.price_source_verification["status"] == "success"
+        assert response.input_confirmation["status"] == "confirmed"
 
 
 class TestCronAdjustmentCheckLogging:

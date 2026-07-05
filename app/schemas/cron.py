@@ -24,6 +24,14 @@ class CronDailyUpdateRequest(BaseModel):
         default=True,
         description="If True and check_adjustments=True, auto-fix detected adjustments"
     )
+    run_price_source_verification: bool = Field(
+        default=True,
+        description="If True, compare EODHD and Tiingo closes for core symbols"
+    )
+    confirm_monthly_inputs: bool = Field(
+        default=False,
+        description="If True, verify previous month-end prices exist for all core symbols"
+    )
 
     @validator("date_from", "date_to", pre=True)
     def validate_date_format(cls, v):
@@ -56,6 +64,12 @@ class CronDailyUpdateResponse(BaseModel):
     success_count: Optional[int] = Field(None, description="Number of successfully updated symbols")
     adjustment_check: Optional[Dict] = Field(
         None, description="Results of adjustment check if performed"
+    )
+    price_source_verification: Optional[Dict] = Field(
+        None, description="Results of EODHD/Tiingo close verification if performed"
+    )
+    input_confirmation: Optional[Dict] = Field(
+        None, description="Previous month-end input confirmation status if performed"
     )
 
 

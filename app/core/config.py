@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     CRON_BATCH_SIZE: int = 50
     CRON_UPDATE_DAYS: int = 7
     CRON_FULL_HISTORY_TIMEOUT: int = 300  # Timeout for full history fetch (seconds), adjust after observing actual times
+    PRICE_VERIFICATION_CORE_SYMBOLS: str = "LQD,TECL,XLU,QQQ,GLD,SPY,TQQQ,TMV,GDX,QLD,TMF"
+    PRICE_VERIFICATION_TOLERANCE: float = 0.01
+    EODHD_API_TOKEN: Optional[str] = None
+    TIINGO_API_TOKEN: Optional[str] = None
+    NTFY_TOPIC: Optional[str] = None
 
     # FRED API Settings
     FRED_API_KEY: Optional[str] = None

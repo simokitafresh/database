@@ -28,10 +28,60 @@ if [[ "$RENDER_EXTERNAL_URL" == https://https://* ]]; then
     log "Fixed duplicate https:// in URL"
 fi
 
+if [[ "$RENDER_EXTERNAL_URL" != http://* && "$RENDER_EXTERNAL_URL" != https://* ]]; then
+    RENDER_EXTERNAL_URL="https://${RENDER_EXTERNAL_URL}"
+    log "Added https:// scheme to URL"
+fi
+
 # Construct base URL
 BASE_URL="${RENDER_EXTERNAL_URL%/}"
 
 log "Using base URL: ${BASE_URL}"
+
+if [ "${USE_LEGACY_FETCH_JOBS:-false}" != "true" ]; then
+    REQUEST_BODY="${CRON_REQUEST_BODY:-{\"dry_run\": false}}"
+    log "Triggering daily update endpoint with body: ${REQUEST_BODY}"
+    DAILY_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+      -X POST "${BASE_URL}/v1/daily-update" \
+      -H "Content-Type: application/json" \
+      -H "X-Cron-Secret: ${CRON_SECRET_TOKEN}" \
+      -d "${REQUEST_BODY}" \
+      --max-time 3600)
+
+    DAILY_HTTP_STATUS=$(echo "$DAILY_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+    DAILY_BODY=$(echo "$DAILY_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+    if [ "$DAILY_HTTP_STATUS" != "200" ]; then
+        log "ERROR: Daily update failed. HTTP Status: $DAILY_HTTP_STATUS"
+        log "Response: $DAILY_BODY"
+        exit 1
+    fi
+
+    log "Daily update completed"
+    log "Response: $DAILY_BODY"
+
+    log "Triggering daily economic data update..."
+    ECO_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+      -X POST "${BASE_URL}/v1/daily-economic-update" \
+      -H "Content-Type: application/json" \
+      -H "X-Cron-Secret: ${CRON_SECRET_TOKEN}" \
+      -d '{"dry_run": false}' \
+      --max-time 60)
+
+    ECO_HTTP_STATUS=$(echo "$ECO_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+    ECO_BODY=$(echo "$ECO_RESPONSE" | sed '/HTTP_STATUS:/d')
+
+    if [ "$ECO_HTTP_STATUS" != "200" ]; then
+        log "WARNING: Failed to update economic data. HTTP Status: $ECO_HTTP_STATUS"
+        log "Response: $ECO_BODY"
+    else
+        log "Successfully updated economic data"
+        log "Response: $ECO_BODY"
+    fi
+
+    log "Daily stock data update job completed successfully"
+    exit 0
+fi
 
 # Step 1: Get active symbols
 log "Fetching active symbols..."

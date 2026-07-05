@@ -64,7 +64,7 @@ def upgrade() -> None:
 
             UNION ALL
 
-            SELECT _symbol AS symbol,
+            SELECT sc.new_symbol AS symbol,
                    p.date,
                    p.open,
                    p.high,

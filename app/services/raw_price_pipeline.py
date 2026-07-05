@@ -424,11 +424,29 @@ async def derive_adjusted_prices(
             }
         )
 
+    raw_by_symbol: dict[str, list[tuple[date, float]]] = {}
+    for symbol, trade_date, consensus_close, _volume in raw_rows:
+        raw_by_symbol.setdefault(symbol, []).append((trade_date, float(consensus_close)))
+    for rows in raw_by_symbol.values():
+        rows.sort(key=lambda item: item[0])
+
+    for symbol, events in events_by_symbol.items():
+        for event in events:
+            if event["event_type"] != "dividend" or not event.get("dividend_amount"):
+                continue
+            previous = _previous_raw_close(raw_by_symbol.get(symbol, []), event["ex_date"])
+            if previous is None or previous <= 0:
+                event["adjustment_factor"] = 1.0
+                continue
+            event["adjustment_factor"] = max(
+                0.0, 1.0 - float(event["dividend_amount"]) / previous
+            )
+
     price_rows: list[dict[str, Any]] = []
     for symbol, trade_date, consensus_close, volume in raw_rows:
         close = float(consensus_close)
         factor = _adjustment_factor(symbol, trade_date, close, events_by_symbol.get(symbol, []))
-        adjusted_close = round(close * factor, 6)
+        adjusted_close = close * factor
         price_rows.append(
             {
                 "symbol": symbol,
@@ -457,8 +475,16 @@ def _adjustment_factor(
         if event["event_type"] == "split" and event.get("split_ratio"):
             factor /= float(event["split_ratio"])
         elif event["event_type"] == "dividend" and event.get("dividend_amount"):
-            factor *= max(0.0, 1.0 - float(event["dividend_amount"]) / close)
+            event_factor = event.get("adjustment_factor")
+            if event_factor is None:
+                event_factor = max(0.0, 1.0 - float(event["dividend_amount"]) / close)
+            factor *= float(event_factor)
     return factor
+
+
+def _previous_raw_close(rows: list[tuple[date, float]], ex_date: date) -> float | None:
+    previous = [close for trade_date, close in rows if trade_date < ex_date]
+    return previous[-1] if previous else None
 
 
 async def run_raw_price_pipeline(

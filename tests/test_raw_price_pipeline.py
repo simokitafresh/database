@@ -146,3 +146,83 @@ async def test_derive_adjusted_prices_writes_prices_api_compatible_rows():
 def test_eodhd_adjusted_close_tolerance_helper():
     assert pipeline.eodhd_adjusted_close_within_tolerance(108.688, 108.689, tolerance=0.01)
     assert not pipeline.eodhd_adjusted_close_within_tolerance(108.688, 108.72, tolerance=0.01)
+
+
+def test_month_end_dividend_is_applied_to_prior_dates_only():
+    events = [
+        {
+            "event_type": "dividend",
+            "ex_date": date(2026, 6, 30),
+            "dividend_amount": 1.0,
+        }
+    ]
+
+    assert pipeline._adjustment_factor("LQD", date(2026, 6, 29), 100.0, events) == 0.99
+    assert pipeline._adjustment_factor("LQD", date(2026, 6, 30), 100.0, events) == 1.0
+
+
+def test_next_month_dividend_is_not_applied_to_month_end_signal_date():
+    events = [
+        {
+            "event_type": "dividend",
+            "ex_date": date(2026, 7, 1),
+            "dividend_amount": 1.0,
+        }
+    ]
+
+    assert pipeline._adjustment_factor("LQD", date(2026, 6, 30), 100.0, events) == 0.99
+    assert pipeline._adjustment_factor("LQD", date(2026, 7, 1), 100.0, events) == 1.0
+
+
+def test_month_end_split_adjusts_prior_dates_only():
+    events = [
+        {
+            "event_type": "split",
+            "ex_date": date(2026, 6, 30),
+            "split_ratio": 2.0,
+        }
+    ]
+
+    assert pipeline._adjustment_factor("TECL", date(2026, 6, 29), 100.0, events) == 0.5
+    assert pipeline._adjustment_factor("TECL", date(2026, 6, 30), 100.0, events) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_derive_adjusted_prices_keeps_ieee_precision_without_six_decimal_rounding():
+    session = RecordingSession(
+        [
+            [("SPY", date(2026, 5, 31), 1.0 / 3.0, 1000)],
+            [("SPY", "dividend", date(2026, 6, 1), 0.01, None)],
+        ]
+    )
+
+    with patch.object(pipeline, "upsert_prices", AsyncMock(return_value=(1, 0))) as upsert:
+        await pipeline.derive_adjusted_prices(
+            session, ["SPY"], date(2026, 5, 1), date(2026, 6, 30)
+        )
+
+    price_row = upsert.call_args.args[1][0]
+    expected = (1.0 / 3.0) * (1.0 - 0.01 / (1.0 / 3.0))
+    assert abs(price_row["close"] - expected) <= 1e-12
+
+
+@pytest.mark.asyncio
+async def test_derive_adjusted_prices_uses_previous_close_for_dividend_factor():
+    session = RecordingSession(
+        [
+            [
+                ("LQD", date(2026, 6, 29), 100.0, 1000),
+                ("LQD", date(2026, 6, 30), 110.0, 1000),
+            ],
+            [("LQD", "dividend", date(2026, 6, 30), 1.0, None)],
+        ]
+    )
+
+    with patch.object(pipeline, "upsert_prices", AsyncMock(return_value=(2, 0))) as upsert:
+        await pipeline.derive_adjusted_prices(
+            session, ["LQD"], date(2026, 6, 1), date(2026, 6, 30)
+        )
+
+    price_rows = upsert.call_args.args[1]
+    assert price_rows[0]["close"] == 99.0
+    assert price_rows[1]["close"] == 110.0

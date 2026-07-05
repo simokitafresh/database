@@ -79,3 +79,58 @@ async def test_confirm_previous_month_inputs_pending_and_alerts_when_rows_missin
     assert output["target_date"] == "2026-06-30"
     assert output["missing_symbols"] == ["QQQ"]
     alert.assert_awaited_once()
+
+
+def test_previous_month_last_business_day_handles_month_start_holiday_run():
+    assert verification.previous_month_last_business_day(date(2026, 1, 1)) == date(2025, 12, 31)
+    assert verification.previous_month_last_business_day(date(2026, 8, 1)) == date(2026, 7, 31)
+
+
+@pytest.mark.asyncio
+async def test_confirm_previous_month_inputs_uses_previous_business_day_for_utc_jst_guard():
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(fetchall=lambda: [("TECL",), ("XLU",)])
+
+    output = await verification.confirm_previous_month_inputs(
+        session,
+        today=date(2026, 7, 1),
+        symbols=["TECL", "XLU"],
+    )
+
+    assert output["status"] == "confirmed"
+    assert output["target_date"] == "2026-06-30"
+
+
+@pytest.mark.asyncio
+async def test_source_last_business_day_mismatch_is_not_confirmed_without_price_row():
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(fetchall=lambda: [("SPY",)])
+
+    with patch.object(verification, "send_ntfy_alert", AsyncMock(return_value={"sent": True})):
+        output = await verification.confirm_previous_month_inputs(
+            session,
+            today=date(2025, 12, 1),
+            symbols=["SPY", "QQQ"],
+        )
+
+    assert output["status"] == "pending"
+    assert output["target_date"] == "2025-11-28"
+    assert output["missing_symbols"] == ["QQQ"]
+
+
+@pytest.mark.asyncio
+async def test_composite_month_end_dividend_and_jst_pending_triggers_alert():
+    session = AsyncMock()
+    session.execute.return_value = SimpleNamespace(fetchall=lambda: [])
+
+    with patch.object(verification, "send_ntfy_alert", AsyncMock(return_value={"sent": True})) as alert:
+        output = await verification.confirm_previous_month_inputs(
+            session,
+            today=date(2026, 7, 1),
+            symbols=["TECL", "XLU"],
+        )
+
+    assert output["status"] == "pending"
+    assert output["target_date"] == "2026-06-30"
+    assert output["missing_symbols"] == ["TECL", "XLU"]
+    alert.assert_awaited_once()
